@@ -1,0 +1,6 @@
+[submodule "extern/klft"]
+	path = extern/klft
+	url = https://github.com/djrolfes/klft.git
+[submodule "extern/hadron"]
+	path = extern/hadron
+	url = https://github.com/HISKP-LQCD/hadron.git
