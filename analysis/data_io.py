@@ -2,17 +2,20 @@ import pandas as pd
 import os
 
 def read_data_file(filepath):
-    """Reads a whitespace-separated data file into a pandas DataFrame, assuming the first line contains headers."""
+    """Reads a whitespace-separated data file into a pandas DataFrame, ignoring '#' in the header line."""
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"Data file not found: {filepath}")
-    
-    # Read the file with the first line as headers
-    df = pd.read_csv(filepath, delim_whitespace=True)
-    
+
+    # Read the first line, strip leading '#' if present, then read the rest
+    with open(filepath, 'r') as f:
+        header = f.readline().lstrip('#').strip()
+        columns = header.split()
+        df = pd.read_csv(f, delim_whitespace=True, names=columns)
+
     # Ensure the first column is named 'hmc_step'
     if df.columns[0] != 'hmc_step':
         df.rename(columns={df.columns[0]: 'hmc_step'}, inplace=True)
-    
+
     return df
 
 # Example: Specific IO functions using YAML variable names

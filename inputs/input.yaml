@@ -1,10 +1,10 @@
 
 HMCParams:
   Ndims: 4
-  L0: 8
-  L1: 8
-  L2: 8
-  L3: 8
+  L0: 12
+  L1: 12
+  L2: 12
+  L3: 12
   seed: 1234
   Nd: 4
   Nc: 2
@@ -18,7 +18,7 @@ Integrator:
   Monomials:
     - Type: "Leapfrog"
       level: 0
-      steps: 100
+      steps: 50
     # - Type: "Leapfrog"
     #   level: 1
     #   steps: 20
@@ -39,6 +39,7 @@ GaugeObservableParams:
   measure_plaquette: true
   measure_wilson_loop_temporal: false
   measure_wilson_loop_mu_nu: false
+  measure_action_density: true
   flush: 25
   do_wilson_flow: true
   WilsonFlowParams:
