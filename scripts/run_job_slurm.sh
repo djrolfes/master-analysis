@@ -18,7 +18,9 @@ OUTPUT_DIR="$(realpath output)/$(basename ${INPUT_YAML%.*})_$(date +%Y%m%d_%H%M%
 echo "Output directory: $OUTPUT_DIR"
 
 # Submit data generation job
-sbatch scripts/data_generation.slurm "$INPUT_YAML" "$OUTPUT_DIR"
+DATA_JOB_ID=$(sbatch --parsable scripts/data_generation.slurm "$INPUT_YAML" "$OUTPUT_DIR")
+echo "Data generation job submitted with Job ID: $DATA_JOB_ID"
 
-# Submit analysis job with dependency on data generation
-sbatch --dependency=singleton scripts/analysis.slurm "$OUTPUT_DIR"
+# Submit analysis job with dependency on successful data generation
+sbatch --dependency=afterok:$DATA_JOB_ID scripts/analysis.slurm "$OUTPUT_DIR"
+echo "Analysis job submitted with dependency on Job ID: $DATA_JOB_ID"
