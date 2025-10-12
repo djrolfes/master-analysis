@@ -3,8 +3,8 @@
 # SLURM Job Script for Data Generation
 #
 #SBATCH --job-name=wf_data_generation
-#SBATCH --output=slurm-data-%j.out
-#SBATCH --error=slurm-data-%j.err
+#SBATCH --output=output/slurm-data-%j.out
+#SBATCH --error=output/slurm-data-%j.err
 #SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

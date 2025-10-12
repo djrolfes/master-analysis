@@ -3,8 +3,8 @@
 # SLURM Job Script for Analysis
 #
 #SBATCH --job-name=wf_analysis
-#SBATCH --output=slurm-analysis-%j.out
-#SBATCH --error=slurm-analysis-%j.err
+#SBATCH --output=output/slurm-analysis-%j.out
+#SBATCH --error=output/slurm-analysis-%j.err
 #SBATCH --time=01:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
