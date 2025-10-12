@@ -8,6 +8,10 @@ set -e  # Exit on error
 KLFT_DIR="$(dirname $(realpath $0))/../extern/klft"
 BUILD_DIR="$KLFT_DIR/build"
 CMAKE_CONFIG_FILE="$(dirname $(realpath $0))/setup_home.cmake"
+if [ -n "${SLURM_JOB_ID:-}" ]; then
+    CMAKE_CONFIG_FILE="$(dirname $(realpath $0))/setup_cluster.cmake"   
+fi
+
 
 # Create the build directory if it doesn't exist
 if [ ! -d "$BUILD_DIR" ]; then
