@@ -30,7 +30,7 @@ fi
 cd "$BUILD_DIR"
 
 # Run make with 6 parallel jobs
-echo "Running make -j 6"
-make -j 6
+echo "Running make -j"
+make -j
 
 echo "Build completed successfully."
