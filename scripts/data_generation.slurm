@@ -11,7 +11,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=32G
-#SBATCH --gres:pascal:1
+#SBATCH --gres=gpu:pascal:1
 
 set -euo pipefail
 module purge
