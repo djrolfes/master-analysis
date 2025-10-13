@@ -74,10 +74,10 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
       action_density_data <- action_density_data %>% filter(hmc_step > skip_steps)
     }
 
-    if (grepl("clover", name, ignore.case = TRUE)) {
-      action_density_data <- action_density_data %>%
-        mutate(across(-hmc_step, ~ . - 0.5))
-    }
+    # if (grepl("clover", name, ignore.case = TRUE)) {
+    #   action_density_data <- action_density_data %>%
+    #     mutate(across(-hmc_step, ~ . - 0.5))
+    # }
 
     # Bootstrap analysis for each flow time
     results <- action_density_data %>%
@@ -166,4 +166,3 @@ if (length(args) != 2) {
 directory <- args[1]
 skip_steps <- args[2]
 analyze_wilsonflow(directory, skip_steps = as.integer(skip_steps))
-
