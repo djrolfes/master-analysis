@@ -131,7 +131,7 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
       theme_minimal()
 
     # Save both plots to the same PDF
-    pdf(file.path(directory, paste0("bootstrap_", sub("\\.txt$", "", name)), ".pdf"), width = 8, height = 10)
+    pdf(file.path(directory, paste0("bootstrap_", sub("\\.txt$", "", name), ".pdf")), width = 8, height = 10)
     print(action_density_plot)
     print(ad_ft2_plot)
     dev.off()
