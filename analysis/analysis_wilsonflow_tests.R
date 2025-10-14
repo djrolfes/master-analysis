@@ -108,16 +108,16 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
       )
 
     # Plot mean and error vs flow time for action_density
-    # action_density_plot <- ggplot(results, aes(x = flow_time_num, y = mean)) +
-    #   geom_line() +
-    #   geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
-    #   scale_y_log10() +
-    #   labs(
-    #     title = paste("Bootstrap Analysis of Action Density:", name),
-    #     x = "Wilson Flow Time",
-    #     y = "Mean Action Density ± Error (log scale)"
-    #   ) +
-    #   theme_minimal()
+    action_density_plot <- ggplot(results, aes(x = flow_time_num, y = mean)) +
+      geom_line() +
+      geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
+      # scale_y_log10() +
+      labs(
+        title = paste("Bootstrap Analysis of Action Density:", name),
+        x = "Wilson Flow Time",
+        y = "Mean Action Density ± Error (log scale)"
+      ) +
+      theme_minimal()
 
     # Plot mean and error vs flow time for action_density * flow_time^2
     ad_ft2_plot <- ggplot(boot_results, aes(x = as.numeric(flow_time), y = mean_ad_ft2)) +
