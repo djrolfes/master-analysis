@@ -50,10 +50,26 @@ cd "$BUILD_DIR"
 # Run make with all available CPU cores
 if [ -n "${SLURM_JOB_ID:-}" ]; then
     echo "Running make with srun using all available CPU cores"
-    srun make -j$(nproc)
+    if ! srun make -j$(nproc); then
+        echo "Make failed. Deleting build directory and retrying from scratch."
+        cd ..
+        rm -rf "$BUILD_DIR"
+        mkdir -p "$BUILD_DIR"
+        cd "$BUILD_DIR"
+        cmake -C "$CMAKE_CONFIG_FILE" -S ..
+        srun make -j$(nproc)
+    fi
 else
     echo "Running make without srun using all available CPU cores"
-    make -j$(nproc)
+    if ! make -j$(nproc); then
+        echo "Make failed. Deleting build directory and retrying from scratch."
+        cd ..
+        rm -rf "$BUILD_DIR"
+        mkdir -p "$BUILD_DIR"
+        cd "$BUILD_DIR"
+        cmake -C "$CMAKE_CONFIG_FILE" -S ..
+        make -j$(nproc)
+    fi
 fi
 
 echo "Build completed successfully."
