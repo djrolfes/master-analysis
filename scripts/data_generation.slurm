@@ -45,16 +45,16 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     mkdir -p "$OUTPUT_DIR"
     echo "Output directory: $OUTPUT_DIR"
     # Copy input yaml to output directory
-    cp "$INPUT_YAML" "$OUTPUT_DIR/input.yaml"
+    cp "$INPUT_YAML" "$OUTPUT_DIR/$(basename "$INPUT_YAML")"
     echo "Running with srun..."
-    srun ./extern/klft/build/tests/wilsonflow_sp_test -f "$OUTPUT_DIR/input.yaml" -o "$OUTPUT_DIR"
+    srun ./extern/klft/build/tests/wilsonflow_sp_test -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
 else
     # Copy input yaml to output directory
-    cp "$INPUT_YAML" "$OUTPUT_DIR/input.yaml"
+    cp "$INPUT_YAML" "$OUTPUT_DIR/$(basename "$INPUT_YAML")"
     mkdir -p "$OUTPUT_DIR"
     echo "Output directory: $OUTPUT_DIR"
     echo "Running without srun..."
-    ./extern/klft/build/tests/wilsonflow_sp_test -f "$OUTPUT_DIR/input.yaml" -o "$OUTPUT_DIR"
+    ./extern/klft/build/tests/wilsonflow_sp_test -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
 fi
 
 echo "Data generation finished."
