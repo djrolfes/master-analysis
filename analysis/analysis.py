@@ -18,10 +18,13 @@ def analyze_directory(directory):
     print(f"Analyzing directory: {directory}")
 
     # --- Read Input YAML ---
-    input_yaml_path = os.path.join(directory, 'input.yaml')
-    if not os.path.exists(input_yaml_path):
-        print(f"Error: 'input.yaml' not found in {directory}")
+    yaml_files = [f for f in os.listdir(directory) if f.endswith('.yaml')]
+    if not yaml_files:
+        print(f"Error: No .yaml file found in {directory}")
         return
+
+    input_yaml_path = os.path.join(directory, yaml_files[0])
+    print(f"Using YAML file: {yaml_files[0]}")
 
     config = read_yaml_config(input_yaml_path)
 
