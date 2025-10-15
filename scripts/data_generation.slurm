@@ -35,31 +35,24 @@ if [ -z "$INPUT_YAML" ] || [ -z "$OUTPUT_DIR" ]; then
     exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
-echo "Output directory: $OUTPUT_DIR"
-
-# Copy input yaml to output directory
-cp "$INPUT_YAML" "$OUTPUT_DIR/input.yaml"
-
-# --- Build and Data Generation ---
-echo "Running build script..."
-echo "Running build script..."
-if [ -n "${SLURM_JOB_ID:-}" ]; then
-    echo "Building with srun..."
-    srun ./scripts/build_klft.sh
-else
-    echo "Building without srun..."
-    ./scripts/build_klft.sh
-fi
-
 export KLFT_TUNING=0
-export KLFT_VERBOSITY=1
+export KLFT_VERBOSITY=0
 
 # Use srun if within a SLURM job, otherwise run directly
 if [ -n "${SLURM_JOB_ID:-}" ]; then
+    # Append the SLURM job ID to the output directory
+    OUTPUT_DIR="${OUTPUT_DIR}_$SLURM_JOB_ID"
+    mkdir -p "$OUTPUT_DIR"
+    echo "Output directory: $OUTPUT_DIR"
+    # Copy input yaml to output directory
+    cp "$INPUT_YAML" "$OUTPUT_DIR/input.yaml"
     echo "Running with srun..."
     srun ./extern/klft/build/tests/wilsonflow_sp_test -f "$OUTPUT_DIR/input.yaml" -o "$OUTPUT_DIR"
 else
+    # Copy input yaml to output directory
+    cp "$INPUT_YAML" "$OUTPUT_DIR/input.yaml"
+    mkdir -p "$OUTPUT_DIR"
+    echo "Output directory: $OUTPUT_DIR"
     echo "Running without srun..."
     ./extern/klft/build/tests/wilsonflow_sp_test -f "$OUTPUT_DIR/input.yaml" -o "$OUTPUT_DIR"
 fi

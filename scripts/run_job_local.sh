@@ -10,15 +10,20 @@ if [ -z "$INPUT_YAML" ]; then
     exit 1
 fi
 
-# Convert input path to full path
-INPUT_YAML=$(realpath "$INPUT_YAML")
 
-# Create a unique output directory
-OUTPUT_DIR="$(realpath output)/$(basename ${INPUT_YAML%.*})_$(date +%Y%m%d_%H%M%S)"
-echo "Output directory: $OUTPUT_DIR"
 
-# Submit data generation job
-bash scripts/data_generation.slurm "$INPUT_YAML" "$OUTPUT_DIR"
+for INPUT_YAML in "$@"; do
+    # Convert input path to full path
+    INPUT_YAML=$(realpath "$INPUT_YAML")
 
-# Submit analysis job with dependency on data generation
-bash scripts/analysis.slurm "$OUTPUT_DIR"
+    # Create a unique output directory
+    OUTPUT_DIR="$(realpath output)/$(basename ${INPUT_YAML%.*})_$(date +%Y%m%d_%H%M%S)"
+    echo "Output directory: $OUTPUT_DIR"
+
+    # Submit data generation job
+    bash scripts/data_generation.slurm "$INPUT_YAML" "$OUTPUT_DIR"
+
+    # Submit analysis job with dependency on data generation
+    bash scripts/analysis.slurm "$OUTPUT_DIR"
+
+done

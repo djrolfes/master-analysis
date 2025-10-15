@@ -1,6 +1,15 @@
 #!/bin/bash
-
-# Script to compile the klft module
+#
+# SLURM Job Script for Building klft
+#
+#SBATCH --job-name=build_klft
+#SBATCH --output=output/slurm-build-%j.out
+#SBATCH --error=output/slurm-build-%j.err
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=16G
 
 set -e  # Exit on error
 
@@ -9,7 +18,7 @@ KLFT_DIR="$(dirname $(realpath $0))/../extern/klft"
 BUILD_DIR="$KLFT_DIR/build"
 CMAKE_CONFIG_FILE="$(dirname $(realpath $0))/setup_home.cmake"
 if [ -n "${SLURM_JOB_ID:-}" ]; then
-    CMAKE_CONFIG_FILE="$(dirname $(realpath $0))/setup_cluster.cmake"   
+    CMAKE_CONFIG_FILE="$(dirname $(realpath $0))/setup_cluster.cmake"
 fi
 
 
@@ -23,7 +32,7 @@ if [ ! -d "$BUILD_DIR" ]; then
         # Change to the build directory
         cd "$BUILD_DIR"
         echo "CMake configuration file found. Configuring with CMake."
-        cmake -C "$CMAKE_CONFIG_FILE" -S .. -B .
+        cmake -C "$CMAKE_CONFIG_FILE" -S ..
     else
         echo "CMake configuration file not found. Please configure manually before building."
         exit 1
@@ -33,8 +42,13 @@ fi
 # Change to the build directory
 cd "$BUILD_DIR"
 
-# Run make with 6 parallel jobs
-echo "Running make -j"
-make -j
+# Run make with all available CPU cores
+if [ -n "${SLURM_JOB_ID:-}" ]; then
+    echo "Running make with srun using all available CPU cores"
+    srun make -j$(nproc)
+else
+    echo "Running make without srun using all available CPU cores"
+    make -j$(nproc)
+fi
 
 echo "Build completed successfully."
