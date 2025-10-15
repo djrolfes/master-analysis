@@ -13,12 +13,17 @@
 
 set -e  # Exit on error
 
+module load CUDA
+module load GCC/11.2.0
+module load CMake
+module load OpenMPI
+
 # Define paths
-KLFT_DIR="/extern/klft"
-BUILD_DIR="$KLFT_DIR/build"
-CMAKE_CONFIG_FILE="/scripts/setup_home.cmake"
+KLFT_DIR=$(realpath "./extern/klft")
+BUILD_DIR=$(realpath "$KLFT_DIR/build")
+CMAKE_CONFIG_FILE=$(realpath "./scripts/setup_home.cmake")
 if [ -n "${SLURM_JOB_ID:-}" ]; then
-    CMAKE_CONFIG_FILE="/scripts/setup_cluster.cmake"
+    CMAKE_CONFIG_FILE=$(realpath "./scripts/setup_cluster.cmake")
 fi
 
 
