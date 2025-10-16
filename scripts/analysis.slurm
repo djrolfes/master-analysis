@@ -63,7 +63,7 @@ for ABS_OUTPUT_DIR in "${ABS_OUTPUT_DIRS[@]}"; do
     echo "Starting analysis job for directory: $ABS_OUTPUT_DIR"
     if [ -n "${SLURM_JOB_ID:-}" ]; then
         echo "Running with srun..."
-        srun python3 analysis.py "$ABS_OUTPUT_DIR"
+        python3 analysis.py "$ABS_OUTPUT_DIR"
     else
         echo "Running without srun..."
         python3 analysis.py "$ABS_OUTPUT_DIR"
