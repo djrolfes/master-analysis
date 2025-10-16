@@ -17,8 +17,6 @@ module load GCC/11.2.0
 module load R
 module load Python
 
-cd "$(dirname "$0")/.."
-
 # --- Expect one or more output directories ---
 if [ "$#" -lt 1 ]; then
     echo "Error: Missing argument. Usage: sbatch analysis.slurm <output_dir1> [<output_dir2> ...]"
