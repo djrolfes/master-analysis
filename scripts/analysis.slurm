@@ -46,7 +46,6 @@ pip install pandas PyYAML
 pip install matplotlib seaborn
 
 # --- Run Analysis for each provided directory sequentially ---
-cd analysis
 
 for OUTPUT_DIR in "${OUTPUT_DIRS[@]}"; do
     ABS_OUTPUT_DIR=$(realpath "$OUTPUT_DIR")
@@ -59,10 +58,10 @@ for OUTPUT_DIR in "${OUTPUT_DIRS[@]}"; do
     echo "Starting analysis job for directory: $ABS_OUTPUT_DIR"
     if [ -n "${SLURM_JOB_ID:-}" ]; then
         echo "Running with srun..."
-        srun python3 analysis.py "$ABS_OUTPUT_DIR"
+        srun python3 analysis/analysis.py "$ABS_OUTPUT_DIR"
     else
         echo "Running without srun..."
-        python3 analysis.py "$ABS_OUTPUT_DIR"
+        python3 analysis/analysis.py "$ABS_OUTPUT_DIR"
     fi
     echo "Analysis job for $ABS_OUTPUT_DIR finished."
 

@@ -190,7 +190,7 @@ analyze_wilsonflow <- function(directory, skip_steps = 200) {
   topological_charge_data <- read_wilsonflow_data(directory, "topological_charge_cumulative.txt")
 
   # Plot a sample of the topological charge data
-  plot_topological_charge_samples(topological_charge_data, directory, n_samples = 400, skip_initial = 100)
+  plot_topological_charge_samples(topological_charge_data, directory, n_samples = 400, skip_initial = skip_steps)
 
   # Compute distance to closest integer for each value
   topological_charge_dist <- topological_charge_data %>%
