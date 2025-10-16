@@ -56,6 +56,7 @@ def analyze_directory(directory):
         ["Rscript", "analysis_SimulationLoggingParams_log_file.R", directory, skip_steps],
         ["Rscript", "analysis_Plaquette.R", directory, "125"],
         ["Rscript", "analysis_wilsonflow_tests.R", directory, "250"],
+        ["Rscript", "analysis_wilsonflow_improv.R", directory, "200"],
         ["Rscript", "analysis_W_temp.R", directory]
     ]
 
