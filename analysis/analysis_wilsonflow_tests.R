@@ -164,8 +164,13 @@ plot_topological_charge_samples <- function(data, directory, n_samples = 400, sk
     pivot_longer(-hmc_step, names_to = "flow_time", values_to = "topological_charge") %>%
     mutate(flow_time = as.numeric(flow_time))
 
+  # Determine integer y-values for the dashed lines
+  y_range <- range(data_long$topological_charge, na.rm = TRUE)
+  y_intercepts <- floor(y_range[1]):ceiling(y_range[2])
+
   # Create the plot
   sample_plot <- ggplot(data_long, aes(x = flow_time, y = topological_charge, group = hmc_step)) +
+    geom_hline(yintercept = y_intercepts, linetype = "dashed", color = "red", linewidth = 0.5) +
     geom_line(alpha = 0.5) +
     labs(
       title = paste("Sample of", nrow(sampled_data), "Topological Charge Configurations"),
