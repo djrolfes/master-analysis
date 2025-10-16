@@ -141,19 +141,62 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
   return(results_list)
 }
 
+plot_topological_charge_samples <- function(data, directory, n_samples = 400, skip_initial = 100) {
+  # Skip initial M configurations
+  if (nrow(data) > skip_initial) {
+    data <- data %>% slice((skip_initial + 1):n())
+  } else {
+    # Not enough data to skip, plot nothing or return a message
+    message("Not enough data to skip the specified number of initial configurations. No sample plot generated.")
+    return(NULL)
+  }
+
+  # Handle if total data is lower than M+N
+  if (nrow(data) < n_samples) {
+    sampled_data <- data
+    message(paste("Number of available configurations after skipping is less than n_samples. Plotting all", nrow(sampled_data), "available configurations."))
+  } else {
+    sampled_data <- data %>% sample_n(n_samples)
+  }
+
+  # Pivot to long format for plotting
+  data_long <- sampled_data %>%
+    pivot_longer(-hmc_step, names_to = "flow_time", values_to = "topological_charge") %>%
+    mutate(flow_time = as.numeric(flow_time))
+
+  # Create the plot
+  sample_plot <- ggplot(data_long, aes(x = flow_time, y = topological_charge, group = hmc_step)) +
+    geom_line(alpha = 0.5) +
+    labs(
+      title = paste("Sample of", nrow(sampled_data), "Topological Charge Configurations"),
+      x = "Wilson Flow Time",
+      y = "Topological Charge"
+    ) +
+    theme_minimal()
+
+  # Save the plot
+  ggsave(file.path(directory, "topological_charge_samples.pdf"), plot = sample_plot)
+  
+  return(sample_plot)
+}
+
 analyze_wilsonflow <- function(directory, skip_steps = 200) {
   # Read the Wilson flow data
   topological_charge_data <- read_wilsonflow_data(directory, "topological_charge_cumulative.txt")
+
+  # Plot a sample of the topological charge data
+  plot_topological_charge_samples(topological_charge_data, directory, n_samples = 400, skip_initial = 100)
+
   # Compute distance to closest integer for each value
   topological_charge_dist <- topological_charge_data %>%
     mutate(across(-hmc_step, ~ abs(. - round(.))))
-
 
   # do a bootstrap
   result <- compute_avg_dist_to_integer(topological_charge_dist, skip_steps = skip_steps)
   avg_dist <- result$data
   avg_dist_plot <- result$plot
   ggsave(file.path(directory, "topological_charge_avg_dist_bootstrap.pdf"), plot = avg_dist_plot)
+
 
   action_density_result <- analyze_action_density(directory, skip_steps = skip_steps)
 }
