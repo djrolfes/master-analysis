@@ -23,7 +23,11 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-OUTPUT_DIRS=("$@")
+# Build a list of absolute paths for output dirs
+ABS_OUTPUT_DIRS=()
+for dir in "$@"; do
+    ABS_OUTPUT_DIRS+=("$(realpath "$dir")")
+done
 
 # --- Check and Install Hadron once ---
 echo "Running check_and_install_hadron.sh..."
@@ -45,10 +49,11 @@ pip install --upgrade pip
 pip install pandas PyYAML
 pip install matplotlib seaborn
 
-# --- Run Analysis for each provided directory sequentially ---
+# --- Change into analysis directory before dispatching ---
+cd analysis
 
-for OUTPUT_DIR in "${OUTPUT_DIRS[@]}"; do
-    ABS_OUTPUT_DIR=$(realpath "$OUTPUT_DIR")
+# --- Run Analysis for each provided absolute directory sequentially ---
+for ABS_OUTPUT_DIR in "${ABS_OUTPUT_DIRS[@]}"; do
 
     if [ ! -d "$ABS_OUTPUT_DIR" ]; then
         echo "Warning: Output directory does not exist: $ABS_OUTPUT_DIR. Skipping."
@@ -58,10 +63,10 @@ for OUTPUT_DIR in "${OUTPUT_DIRS[@]}"; do
     echo "Starting analysis job for directory: $ABS_OUTPUT_DIR"
     if [ -n "${SLURM_JOB_ID:-}" ]; then
         echo "Running with srun..."
-        srun python3 analysis/analysis.py "$ABS_OUTPUT_DIR"
+        srun python3 analysis.py "$ABS_OUTPUT_DIR"
     else
         echo "Running without srun..."
-        python3 analysis/analysis.py "$ABS_OUTPUT_DIR"
+        python3 analysis.py "$ABS_OUTPUT_DIR"
     fi
     echo "Analysis job for $ABS_OUTPUT_DIR finished."
 
