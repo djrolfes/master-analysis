@@ -8,7 +8,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=8
-#SBATCH --ntasks-per-node=1
+#SBATCH --ntasks-per-node=8
 #SBATCH --cpus-per-task=3
 #SBATCH --mem=32G
 #SBATCH --gres=gpu:pascal:8
@@ -47,14 +47,14 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     # Copy input yaml to output directory
     cp "$INPUT_YAML" "$OUTPUT_DIR/$(basename "$INPUT_YAML")"
     echo "Running with srun..."
-    srun ./extern/klft/build/binaries/ptbc -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
+    srun -n 8 ./extern/klft/build/binaries/ptbc -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
 else
     # Copy input yaml to output directory
     cp "$INPUT_YAML" "$OUTPUT_DIR/$(basename "$INPUT_YAML")"
     mkdir -p "$OUTPUT_DIR"
     echo "Output directory: $OUTPUT_DIR"
     echo "Running without srun..."
-    ./extern/klft/build/binaries/ptbc -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
+    mpirun -n 8 ./extern/klft/build/binaries/ptbc -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
 fi
 
 echo "Data generation finished."
