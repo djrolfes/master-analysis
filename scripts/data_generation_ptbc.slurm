@@ -3,15 +3,15 @@
 # SLURM Job Script for Data Generation
 #
 #SBATCH --job-name=wf_data_generation
-#SBATCH --output=output/slurm-data-%j.out
-#SBATCH --error=output/slurm-data-%j.err
+#SBATCH --output=output/slurm-ptbc-data-%j.out
+#SBATCH --error=output/slurm-ptbc-data-%j.err
 #SBATCH --time=24:00:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=3
 #SBATCH --mem=32G
-#SBATCH --gres=gpu:pascal:1
+#SBATCH --gres=gpu:pascal:8
 
 set -euo pipefail
 module purge
