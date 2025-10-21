@@ -103,7 +103,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   }
  quad <- function(x) x**2
   # uwerr will compute integrated autocorrelation time; we set pl=TRUE to get plots
-  uw <- tryCatch({ hadron::uwerr(quad,ac_data, pl = TRUE) }, error = function(e) {
+  uw <- tryCatch({ hadron::uwerr(quad,as.vector(ac_data), pl = TRUE) }, error = function(e) {
     write_log(paste0("ERROR computing uwerr: ", conditionMessage(e)))
     return(NULL)
   })
