@@ -84,6 +84,18 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
     write_log(paste0("ERROR saving timeseries plot: ", conditionMessage(e)))
   })
 
+  # --- Bootstrap analysis of the topological charge (mean ± error) ---
+  out_boot_pdf <- file.path(directory, "topological_charge_bootstrap.pdf")
+  write_log(paste0("analyze_topological_charge: computing bootstrap.analysis and saving to ", out_boot_pdf))
+  tryCatch({
+    pdf(out_boot_pdf, width = 8, height = 6)
+    hadron::bootstrap.analysis(data$topo, skip = skip_initial, pl = TRUE)
+    dev.off()
+    write_log("analyze_topological_charge: bootstrap plot saved")
+  }, error = function(e) {
+    write_log(paste0("analyze_topological_charge: ERROR running bootstrap.analysis: ", conditionMessage(e)))
+  })
+
   # 2) Compute autocorrelation time using hadron::uwerr
   # Skip initial configs if requested
   if (skip_initial < 0) skip_initial <- 0
@@ -101,10 +113,10 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
     write_log("Not enough data points to compute autocorrelation")
     return(list(timeseries = timeseries_plot, autocorr = NULL))
   }
- quad <- function(x) x**2
-  # uwerr will compute integrated autocorrelation time; we set pl=TRUE to get plots
-  uw <- tryCatch({ hadron::uwerr(quad,as.vector(ac_data), pl = TRUE) }, error = function(e) {
-    write_log(paste0("ERROR computing uwerr: ", conditionMessage(e)))
+
+  # uwerrprimary handles primary (1D) observables
+  uw <- tryCatch({ hadron::uwerrprimary(ac_data, pl = TRUE) }, error = function(e) {
+    write_log(paste0("ERROR computing uwerrprimary: ", conditionMessage(e)))
     return(NULL)
   })
 

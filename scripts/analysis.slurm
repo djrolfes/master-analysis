@@ -17,9 +17,16 @@ module load GCC/11.2.0
 module load R
 module load Python
 
-# --- Expect one or more output directories ---
+# --- Parse optional -skip flag ---
+SKIP_STEPS=1250
+if [ "$#" -ge 2 ] && [ "$1" = "-skip" ]; then
+    SKIP_STEPS="$2"
+    shift 2
+fi
+
+# --- Expect one or more output directories (remaining args) ---
 if [ "$#" -lt 1 ]; then
-    echo "Error: Missing argument. Usage: sbatch analysis.slurm <output_dir1> [<output_dir2> ...]"
+    echo "Error: Missing argument. Usage: sbatch analysis.slurm [-skip <n>] <output_dir1> [<output_dir2> ...]"
     exit 1
 fi
 
@@ -60,13 +67,13 @@ for ABS_OUTPUT_DIR in "${ABS_OUTPUT_DIRS[@]}"; do
         continue
     fi
 
-    echo "Starting analysis job for directory: $ABS_OUTPUT_DIR"
+    echo "Starting analysis job for directory: $ABS_OUTPUT_DIR (skip=$SKIP_STEPS)"
     if [ -n "${SLURM_JOB_ID:-}" ]; then
         echo "Running with srun..."
-        python3 analysis.py "$ABS_OUTPUT_DIR"
+        srun python3 analysis.py "$ABS_OUTPUT_DIR" "$SKIP_STEPS"
     else
         echo "Running without srun..."
-        python3 analysis.py "$ABS_OUTPUT_DIR"
+        python3 analysis.py "$ABS_OUTPUT_DIR" "$SKIP_STEPS"
     fi
     echo "Analysis job for $ABS_OUTPUT_DIR finished."
 

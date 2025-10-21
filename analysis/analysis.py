@@ -11,11 +11,11 @@ def read_yaml_config(yaml_path):
     with open(yaml_path, 'r') as f:
         return yaml.safe_load(f)
 
-def analyze_directory(directory):
+def analyze_directory(directory, skip_steps="1250"):
     """
     Analyzes the output of a klft simulation in a given directory.
     """
-    print(f"Analyzing directory: {directory}")
+    print(f"Analyzing directory: {directory} (skip={skip_steps})")
 
     # --- Read Input YAML ---
     yaml_files = [f for f in os.listdir(directory) if f.endswith('.yaml')]
@@ -50,15 +50,14 @@ def analyze_directory(directory):
             else:
                 print(f"Warning: Did not find '{key}': {filename}")
     
-    skip_steps = "1250"
     # --- Dispatch R Analyses ---
     r_scripts = [
-        ["Rscript", "analysis_SimulationLoggingParams_log_file.R", directory, skip_steps],
-        ["Rscript", "analysis_Plaquette.R", directory, skip_steps],
-        ["Rscript", "analysis_wilsonflow_tests.R", directory, skip_steps],
-        # ["Rscript", "analysis_wilsonflow_improv.R", directory, skip_steps],
+        ["Rscript", "analysis_SimulationLoggingParams_log_file.R", directory, str(skip_steps)],
+        ["Rscript", "analysis_Plaquette.R", directory, str(skip_steps)],
+        ["Rscript", "analysis_wilsonflow_tests.R", directory, str(skip_steps)],
+        # ["Rscript", "analysis_wilsonflow_improv.R", directory, str(skip_steps)],
         ["Rscript", "analysis_W_temp.R", directory],
-        ["Rscript", "analysis_topological_charge.R", directory, skip_steps]
+        ["Rscript", "analysis_topological_charge.R", directory, str(skip_steps)]
     ]
 
     # Set the R_LIBS_USER environment variable to match the library path in check_and_install_hadron.sh
@@ -82,9 +81,10 @@ def analyze_directory(directory):
             print("Error: Rscript not found. Ensure R is installed and available in PATH.")
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python analysis.py <output_directory>")
+    if len(sys.argv) not in (2, 3):
+        print("Usage: python analysis.py <output_directory> [skip_steps]")
         sys.exit(1)
 
     output_dir = sys.argv[1]
-    analyze_directory(output_dir)
+    skip_steps = sys.argv[2] if len(sys.argv) == 3 else "1250"
+    analyze_directory(output_dir, skip_steps)
