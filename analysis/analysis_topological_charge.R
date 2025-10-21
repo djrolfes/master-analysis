@@ -86,12 +86,18 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   # --- Bootstrap analysis of the topological charge (mean ± error) ---
   out_boot_pdf <- file.path(directory, "topological_charge_bootstrap.pdf")
-  write_log(paste0("analyze_topological_charge: computing bootstrap.analysis and saving to ", out_boot_pdf))
+  out_boot_txt <- file.path(directory, "topological_charge_bootstrap.txt")
+  write_log(paste0("analyze_topological_charge: computing bootstrap.analysis and saving to ", out_boot_pdf, " and ", out_boot_txt))
   tryCatch({
+    # Open PDF device so bootstrap.analysis can plot
     pdf(out_boot_pdf, width = 8, height = 6)
-    hadron::bootstrap.analysis(data$topo, skip = skip_initial, pl = TRUE)
+    # capture printed output from bootstrap.analysis into a character vector
+    boot_output <- capture.output(hadron::bootstrap.analysis(data$topo, skip = skip_initial, pl = TRUE))
     dev.off()
-    write_log("analyze_topological_charge: bootstrap plot saved")
+
+    # Write textual output to .txt file
+    writeLines(boot_output, con = out_boot_txt)
+    write_log("analyze_topological_charge: bootstrap plot and text output saved")
   }, error = function(e) {
     write_log(paste0("analyze_topological_charge: ERROR running bootstrap.analysis: ", conditionMessage(e)))
   })
