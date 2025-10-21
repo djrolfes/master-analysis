@@ -50,13 +50,13 @@ def analyze_directory(directory):
             else:
                 print(f"Warning: Did not find '{key}': {filename}")
     
-    skip_steps = "250"
+    skip_steps = "1250"
     # --- Dispatch R Analyses ---
     r_scripts = [
         ["Rscript", "analysis_SimulationLoggingParams_log_file.R", directory, skip_steps],
         ["Rscript", "analysis_Plaquette.R", directory, skip_steps],
         ["Rscript", "analysis_wilsonflow_tests.R", directory, skip_steps],
-        ["Rscript", "analysis_wilsonflow_improv.R", directory, skip_steps],
+        # ["Rscript", "analysis_wilsonflow_improv.R", directory, skip_steps],
         ["Rscript", "analysis_W_temp.R", directory],
         ["Rscript", "analysis_topological_charge.R", directory, skip_steps]
     ]
