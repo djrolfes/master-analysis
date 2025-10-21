@@ -92,7 +92,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
     return(list(timeseries = timeseries_plot, autocorr = NULL))
   }
 
-  ac_data <- data$topo[(skip_initial + 1):nrow(data)]
+  ac_data <- data$topo[(skip_initial + 1):nrow(data)]**2
   ac_data <- as.numeric(ac_data)
   ac_data <- ac_data[!is.na(ac_data)]
 
