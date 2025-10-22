@@ -21,9 +21,17 @@ module load OpenMPI
 # Define paths
 KLFT_DIR=$(realpath "./extern/klft")
 BUILD_DIR=$(realpath "$KLFT_DIR/build")
+
+DEBUG_FLAG=false
+if [ "$1" == "-debug" ]; then
+    DEBUG_FLAG=true
+fi
 CMAKE_CONFIG_FILE=$(realpath "./scripts/setup_home.cmake")
 if [ -n "${SLURM_JOB_ID:-}" ]; then
     CMAKE_CONFIG_FILE=$(realpath "./scripts/setup_cluster.cmake")
+    if [ "$DEBUG_FLAG" = true ]; then
+        CMAKE_CONFIG_FILE=$(realpath "./scripts/setup_cluster_debug.cmake")
+    fi
 fi
 
 

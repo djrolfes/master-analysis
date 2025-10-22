@@ -2,12 +2,17 @@
 #
 # SLURM Submission Script for klft
 #
-# Usage: ./run_job_slurm.sh [-make] <input_yaml1> <input_yaml2> ...
+# Usage: ./run_job_slurm.sh [-make] [-debug] <input_yaml1> <input_yaml2> ...
 
 # Check for -make flag
 MAKE_FLAG=false
 if [ "$1" == "-make" ]; then
     MAKE_FLAG=true
+    shift
+fi
+DEBUG_FLAG=false
+if [ "$1" == "-debug" ]; then
+    DEBUG_FLAG=true
     shift
 fi
 
@@ -18,7 +23,11 @@ fi
 
 # Submit the build job if -make flag is set
 if [ "$MAKE_FLAG" = true ]; then
-    BUILD_JOB_ID=$(sbatch --parsable scripts/build_klft.slurm)
+    if [ "$DEBUG_FLAG" = true ]; then
+        BUILD_JOB_ID=$(sbatch --parsable scripts/build_klft.slurm -debug)
+    else
+        BUILD_JOB_ID=$(sbatch --parsable scripts/build_klft.slurm)
+    fi
     echo "Build job submitted with Job ID: $BUILD_JOB_ID"
 else
     echo "Skipping build job as -make flag is not set."
