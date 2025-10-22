@@ -13,6 +13,7 @@ fi
 DEBUG_FLAG=false
 if [ "$1" == "-debug" ]; then
     DEBUG_FLAG=true
+    MAKE_FLAG=true
     shift
 fi
 
