@@ -39,13 +39,13 @@ for INPUT_YAML in "$@"; do
     else
         DATA_JOB_ID=$(sbatch --parsable scripts/data_generation.slurm "$INPUT_YAML" "$BASE_OUTPUT_DIR")
     fi
-    echo "Data generation job submitted with Job ID: $DATA_JOB_ID"
+    echo "Data generation job submitted with Job ID: $DATA_JOB_ID (Input YAML: $INPUT_YAML)"
 
     # Update the output directory to include the DATA_JOB_ID
     OUTPUT_DIR="${BASE_OUTPUT_DIR}_$DATA_JOB_ID"
 
     # Submit analysis job with dependency on successful data generation
     sbatch --dependency=afterok:$DATA_JOB_ID scripts/analysis.slurm "$OUTPUT_DIR"
-    echo "Analysis job submitted with dependency on Job ID: $DATA_JOB_ID"
+    echo "Analysis job submitted with dependency on Job ID: $DATA_JOB_ID (Output Dir: $OUTPUT_DIR)"
 
 done
