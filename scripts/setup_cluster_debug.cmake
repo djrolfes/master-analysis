@@ -12,7 +12,7 @@ set(CMAKE_CUDA_COMPILER "/usr/local/cuda-12.9/bin/nvcc" CACHE FILEPATH "CUDA com
 # Compiler flags
 set(CMAKE_CXX_FLAGS "" CACHE STRING "Flags used by the CXX compiler during all build types")
 # Ensure maximum debug info and no optimization for the host code
-set(CMAKE_CXX_FLAGS_DEBUG "-g -O0" CACHE STRING "Flags used by the CXX compiler during DEBUG builds") # <-- KEY CHANGE: Added -O0 for host
+set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -DDEBUG_MPI" CACHE STRING "Flags used by the CXX compiler during DEBUG builds") # <-- KEY CHANGE: Added -O0 for host
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Flags used by the CXX compiler during RELEASE builds")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG" CACHE STRING "Flags used by the CXX compiler during RELWITHDEBINFO builds")
 
