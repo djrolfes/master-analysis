@@ -132,9 +132,10 @@ analyze_simulation_log <- function(directory, skip_steps = 0) {
     stop("SimulationLoggingParams$log_filename not found in YAML")
   }
 
-  # Build pattern to match numbered variants, e.g. simulation_log.txt -> ^simulation_log.*\.txt$
+  # Build a more specific pattern to avoid matching analysis output files
+  # Matches base.txt, base.rank1.txt, etc. but not base_summary.txt
   base_prefix <- sub("\\.txt$", "", filename)
-  pattern <- paste0('^', base_prefix, '.*\\.txt$')
+  pattern <- paste0('^', base_prefix, '(\\.(rank[0-9]+))?\\.txt$')
 
   files <- list.files(directory, pattern = pattern, full.names = TRUE)
   if (length(files) == 0) {

@@ -25,8 +25,13 @@ analyze_acceptance <- function(data) {
   
   # Use bootstrap.analysis on each column (rank)
   bootstrap_results <- apply(accepts_matrix, 2, function(col) {
-    result <- bootstrap.analysis(data = col, num_boot = 100, statistic = mean)
-    c(mean = result$mean, error = result$se)
+    # hadron::bootstrap.analysis expects a function that returns a single value
+    boot_func <- function(data) {
+      return(mean(data))
+    }
+    result <- hadron::bootstrap.analysis(data = col, boot.R = 100, boot.fun = boot_func)
+    # The result from bootstrap.analysis is a 'cf' object, extract mean and se
+    c(mean = result$t0, error = result$se)
   })
   
   # Prepare data for plotting
@@ -152,5 +157,6 @@ if (length(args) < 1) {
 }
 
 directory <- args[1]
+assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
 skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
 analyze_ptbc_log(directory, skip_initial = skip_initial)

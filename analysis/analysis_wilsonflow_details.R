@@ -20,12 +20,21 @@ generate_plot <- function(df_topo, df_wilsonflow, output_path, skip_initial) {
     inner_join(df_wilsonflow, by = "step") %>%
     filter(step > skip_initial)  # Skip initial configurations
 
-df_merged$topological_charge_rounded <- round(df_merged$topological_charge)
-df_merged$sp_deriv_mut <- abs(df_merged$sp_max_deriv - mean(df_merged$sp_max_deriv))
-df_merged$sp_max_deriv_diff <- (df_merged$sp_max_init - df_merged$sp_max_deriv) / df_merged$flow_step
+  if (nrow(df_merged) == 0) {
+    write_log("No data to plot after filtering and merging.")
+    return()
+  }
 
-coeff <- max(df_merged$topological_charge_rounded^2, na.rm = TRUE) / max(df_merged$sp_max_deriv_diff, na.rm = TRUE)
-#coeff <- 1 / max(df_merged$sp_max_deriv_diff, na.rm = TRUE)
+  df_merged$topological_charge_rounded <- round(df_merged$topological_charge)
+  # Ensure sp_max_deriv is numeric before calculations
+  df_merged$sp_max_deriv <- as.numeric(df_merged$sp_max_deriv)
+  df_merged$sp_max_init <- as.numeric(df_merged$sp_max_init)
+  
+  df_merged$sp_deriv_mut <- abs(df_merged$sp_max_deriv - mean(df_merged$sp_max_deriv, na.rm = TRUE))
+  df_merged$sp_max_deriv_diff <- (df_merged$sp_max_init - df_merged$sp_max_deriv) / df_merged$flow_step
+
+  coeff <- max(df_merged$topological_charge_rounded^2, na.rm = TRUE) / max(df_merged$sp_max_deriv_diff, na.rm = TRUE)
+  #coeff <- 1 / max(df_merged$sp_max_deriv_diff, na.rm = TRUE)
   # Calculate running average for sp_max_deriv
   df_merged <- df_merged %>%
     mutate(sp_max_deriv_avg = zoo::rollmean(sp_max_deriv, k = 5, fill = NA, align = "left"))
@@ -88,5 +97,6 @@ if (length(args) < 1) {
 }
 
 directory <- args[1]
+assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
 skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
 analyze_wilsonflow_details(directory, skip_initial = skip_initial)
