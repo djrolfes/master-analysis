@@ -135,7 +135,7 @@ fi
 # --- Check and Install Core R Dependencies ---
 printf "\n${YELLOW}Checking for core R dependencies...${NC}\n"
 # Note: This step requires system dependencies like libcurl-devel to be installed.
-check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr"
+check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo"
 
 # Check if hadron directory exists
 if [ ! -d "${HADRON_DIR}" ]; then

@@ -31,6 +31,32 @@ read_data_file <- function(filepath) {
   data
 }
 
+read_wilsonflow_details <- function(directory) {
+  config <- read_yaml_config(directory)
+  
+  # Check if WilsonFlowParams exists
+  if (is.null(config$GaugeObservableParams$WilsonFlowParams)) {
+    stop("Error: WilsonFlowParams not found in YAML configuration.")
+  }
+  
+  # Check if wilson_flow_filename exists
+  filename <- config$GaugeObservableParams$WilsonFlowParams$wilson_flow_filename
+  if (is.null(filename) || filename == "") {
+    stop("Error: wilson_flow_filename not found in WilsonFlowParams.")
+  }
+  
+  # Construct the filepath
+  filepath <- file.path(directory, filename)
+  
+  # Check if the file exists
+  if (!file.exists(filepath)) {
+    stop(paste("Error: File not found:", filepath))
+  }
+  
+  # Read the data file
+  read_data_file(filepath)
+}
+
 # Function to read simulation log file
 read_simulation_log <- function(directory, skip_steps = 0) {
   config <- read_yaml_config(directory)

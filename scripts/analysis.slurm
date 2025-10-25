@@ -11,14 +11,17 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
 
-set -euo pipefail
-module purge
-module load GCC/11.2.0
-module load R
-module load Python
+    set -euo pipefail
+if [ -n "${SLURM_JOB_ID:-}" ]; then
+
+    module purge
+    module load GCC/11.2.0
+    module load R
+    module load Python
+fi
 
 # --- Parse optional -skip flag ---
-SKIP_STEPS=1250
+SKIP_STEPS=250
 if [ "$#" -ge 2 ] && [ "$1" = "-skip" ]; then
     SKIP_STEPS="$2"
     shift 2

@@ -14,13 +14,18 @@
 #SBATCH --gres=gpu:pascal:1
 
 set -euo pipefail
-module purge
-module load CUDA
-module load GCC/11.2.0
-module load CMake
-module load OpenMPI
+if [ -n "${SLURM_JOB_ID:-}" ]; then
+    module purge
+    module load CUDA
+    module load GCC/11.2.0
+    module load CMake
+    module load OpenMPI
+    export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+else
+    export OMP_NUM_THREADS=8
+fi
 
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
 export OMP_PLACES=cores
 export OMP_PROC_BIND=spread
 export KLFT_TUNING=0
@@ -35,9 +40,6 @@ if [ -z "$INPUT_YAML" ] || [ -z "$OUTPUT_DIR" ]; then
     exit 1
 fi
 
-export KLFT_TUNING=0
-export KLFT_VERBOSITY=0
-
 # Use srun if within a SLURM job, otherwise run directly
 if [ -n "${SLURM_JOB_ID:-}" ]; then
     # Append the SLURM job ID to the output directory
@@ -47,14 +49,14 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     # Copy input yaml to output directory
     cp "$INPUT_YAML" "$OUTPUT_DIR/$(basename "$INPUT_YAML")"
     echo "Running with srun..."
-    srun ./extern/klft/build/tests/wilsonflow_sp_test -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
+    srun ./extern/klft/build/binaries/hmc -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
 else
     # Copy input yaml to output directory
-    cp "$INPUT_YAML" "$OUTPUT_DIR/$(basename "$INPUT_YAML")"
     mkdir -p "$OUTPUT_DIR"
     echo "Output directory: $OUTPUT_DIR"
+    cp "$INPUT_YAML" "$OUTPUT_DIR/$(basename "$INPUT_YAML")"
     echo "Running without srun..."
-    ./extern/klft/build/tests/wilsonflow_sp_test -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
+    ./extern/klft/build/binaries/hmc -f "$OUTPUT_DIR/$(basename "$INPUT_YAML")" -o "$OUTPUT_DIR"
 fi
 
 echo "Data generation finished."
