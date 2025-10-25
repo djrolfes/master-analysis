@@ -165,7 +165,7 @@ read_ptbc_simulation_log <- function(directory) {
   })
   
   # Combine list of lists into a data frame
-  df <- do.call(rbind, lapply(data_list, function(x) as.data.frame(x, stringsAsFactors = FALSE)))
+  df <- dplyr::bind_rows(data_list)
   
   return(df)
 }
