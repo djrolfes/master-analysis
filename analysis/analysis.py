@@ -59,6 +59,7 @@ def analyze_directory(directory, skip_steps="1250"):
         ["Rscript", "analysis_W_temp.R", directory],
         ["Rscript", "analysis_topological_charge.R", directory],
         ["Rscript", "analysis_wilsonflow_details.R", directory, str(skip_steps)],
+        ["Rscript", "analysis_ptbc_log.R", directory, str(skip_steps)],
     ]
 
     # Set the R_LIBS_USER environment variable to match the library path in check_and_install_hadron.sh

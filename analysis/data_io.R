@@ -121,4 +121,53 @@ read_topological_charge_cumulative <- function(directory) {
   read_data_file(filepath)
 }
 
+# Function to read and parse the ptbcsimulation_log.txt file
+read_ptbc_simulation_log <- function(directory) {
+  config <- read_yaml_config(directory)
+  
+  # Check if PTBCSimulationLoggingParams exists
+  if (is.null(config$PTBCSimulationLoggingParams)) {
+    stop("Error: PTBCSimulationLoggingParams not found in YAML configuration.")
+  }
+  
+  # Check if log_filename exists
+  filename <- config$PTBCSimulationLoggingParams$log_filename
+  if (is.null(filename) || filename == "") {
+    stop("Error: log_filename not found in PTBCSimulationLoggingParams.")
+  }
+  
+  filepath <- file.path(directory, filename)
+  if (!file.exists(filepath)) {
+    stop(paste("Error: File not found:", filepath))
+  }
+  
+  lines <- readLines(filepath)
+  lines <- lines[!grepl("^#", lines)] # Remove comments
+  
+  if (length(lines) == 0) {
+    return(data.frame())
+  }
+  
+  # Helper to parse bracketed strings
+  parse_vector <- function(s) {
+    as.numeric(strsplit(gsub("\\[|\\]", "", s), "\\s+")[[1]])
+  }
+  
+  data_list <- lapply(lines, function(line) {
+    parts <- strsplit(line, ", ")[[1]]
+    list(
+      step = as.integer(parts[1]),
+      swap_start = as.integer(parts[2]),
+      accepts = list(parse_vector(parts[3])),
+      delta_H_swap = list(parse_vector(parts[4])),
+      defects = list(parse_vector(parts[5]))
+    )
+  })
+  
+  # Combine list of lists into a data frame
+  df <- do.call(rbind, lapply(data_list, function(x) as.data.frame(x, stringsAsFactors = FALSE)))
+  
+  return(df)
+}
+
 
