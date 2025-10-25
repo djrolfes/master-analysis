@@ -115,5 +115,6 @@ if (length(args) < 1) {
   stop("Usage: Rscript analysis_wilsonflow_improv.R <directory> [n_boot]")
 }
 directory <- args[1]
+assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
 n_boot <- if (length(args) >= 2) as.integer(args[2]) else 200L
 analyze_wilsonflow_improv(directory, n_boot = n_boot)
