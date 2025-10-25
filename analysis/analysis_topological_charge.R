@@ -88,20 +88,24 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   out_boot_pdf <- file.path(directory, "topological_charge_bootstrap.pdf")
   out_boot_txt <- file.path(directory, "topological_charge_bootstrap.txt")
   write_log(paste0("analyze_topological_charge: computing bootstrap.analysis and saving to ", out_boot_pdf, " and ", out_boot_txt))
+  
+  boot_original <- NULL
   tryCatch({
     # Open PDF device so bootstrap.analysis can plot
     pdf(out_boot_pdf, width = 8, height = 6)
     # capture printed output from bootstrap.analysis into a character vector
-    boot_output <- capture.output(hadron::bootstrap.analysis(data$topo, skip = skip_initial, pl = TRUE))
+    boot_output_text <- capture.output({
+      boot_original <- hadron::bootstrap.analysis(data$topo, skip = skip_initial, pl = TRUE)
+    })
     dev.off()
 
     # Write textual output to .txt file
-    writeLines(boot_output, con = out_boot_txt)
+    writeLines(boot_output_text, con = out_boot_txt)
     write_log("analyze_topological_charge: bootstrap plot and text output saved")
   }, error = function(e) {
     write_log(paste0("analyze_topological_charge: ERROR running bootstrap.analysis: ", conditionMessage(e)))
   })
-
+  
   # 2) Compute autocorrelation time using hadron::uwerr
   # Skip initial configs if requested
   if (skip_initial < 0) skip_initial <- 0
@@ -154,13 +158,141 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # Save summary to a small text file
   summary_file <- file.path(directory, "topological_charge_autocorr_summary.txt")
   write_log(paste0("analyze_topological_charge: writing summary to ", summary_file))
+  
+  # Also compute ACF using computeacf
+  acf_result <- tryCatch({ hadron::computeacf(ac_data) }, error = function(e) {
+    write_log(paste0("ERROR computing computeacf: ", conditionMessage(e)))
+    return(NULL)
+  })
+  
+  acf_tau <- if (!is.null(acf_result)) acf_result$tau else NA
+  acf_dtau <- if (!is.null(acf_result)) acf_result$dtau else NA
+  boot_tau <- if (!is.null(boot_original)) max(boot_original$Tauint) else NA
+  write_log(paste0("analyze_topological_charge: computeacf results - tau=", acf_tau, ", dtau=", acf_dtau))
+
+  # Write summary for original data
   tryCatch({
     cat(sprintf("n_points_after_skip: %d\n", length(ac_data)), file = summary_file)
-    cat(sprintf("tauint: %s\n", as.character(tauint)), file = summary_file, append = TRUE)
-    cat(sprintf("dtauint: %s\n", as.character(dtauint)), file = summary_file, append = TRUE)
-    write_log("analyze_topological_charge: summary written")
+    cat("\n--- Original Data ---\n", file = summary_file, append = TRUE)
+    cat(sprintf("uwerr_tauint: %s\n", as.character(tauint)), file = summary_file, append = TRUE)
+    cat(sprintf("uwerr_dtauint: %s\n", as.character(dtauint)), file = summary_file, append = TRUE)
+    cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau)), file = summary_file, append = TRUE)
+    cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau)), file = summary_file, append = TRUE)
+    cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau)), file = summary_file, append = TRUE)
+    write_log("analyze_topological_charge: summary for original data written")
   }, error = function(e) {
-    write_log(paste0("ERROR writing summary file: ", conditionMessage(e)))
+    write_log(paste0("ERROR writing summary file for original data: ", conditionMessage(e)))
+  })
+
+  # --- Analysis on rounded data ---
+  write_log("analyze_topological_charge: starting analysis on rounded data")
+  ac_data_rounded <- round(ac_data)
+
+  boot_rounded <- tryCatch({ hadron::bootstrap.analysis(ac_data_rounded, skip = skip_initial, pl = FALSE) }, error = function(e) { return(NULL) })
+  # uwerr on rounded data
+  uw_rounded <- tryCatch({ hadron::uwerrprimary(ac_data_rounded, pl = FALSE) }, error = function(e) {
+    write_log(paste0("ERROR computing uwerrprimary on rounded data: ", conditionMessage(e)))
+    return(NULL)
+  })
+  tauint_rounded <- if (!is.null(uw_rounded)) uw_rounded$tauint else NA
+  dtauint_rounded <- if (!is.null(uw_rounded)) uw_rounded$dtauint else NA
+  write_log(paste0("analyze_topological_charge: rounded uwerr results - tauint=", tauint_rounded, ", dtauint=", dtauint_rounded))
+
+  # computeacf on rounded data
+  acf_result_rounded <- tryCatch({ hadron::computeacf(ac_data_rounded, W.max = floor(length(ac_data_rounded)/5)) }, error = function(e) {
+    write_log(paste0("ERROR computing computeacf on rounded data: ", conditionMessage(e)))
+    return(NULL)
+  })
+  acf_tau_rounded <- if (!is.null(acf_result_rounded)) acf_result_rounded$tau else NA
+  acf_dtau_rounded <- if (!is.null(acf_result_rounded)) acf_result_rounded$dtau else NA
+  boot_tau_rounded <- if (!is.null(boot_rounded)) max(boot_rounded$Tauint) else NA
+  write_log(paste0("analyze_topological_charge: rounded computeacf results - tau=", acf_tau_rounded, ", dtau=", acf_dtau_rounded))
+
+  # Append rounded results to summary file
+  tryCatch({
+    cat("\n--- Rounded Data ---\n", file = summary_file, append = TRUE)
+    cat(sprintf("uwerr_tauint: %s\n", as.character(tauint_rounded)), file = summary_file, append = TRUE)
+    cat(sprintf("uwerr_dtauint: %s\n", as.character(dtauint_rounded)), file = summary_file, append = TRUE)
+    cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_rounded)), file = summary_file, append = TRUE)
+    cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_rounded)), file = summary_file, append = TRUE)
+    cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_rounded)), file = summary_file, append = TRUE)
+    write_log("analyze_topological_charge: summary for rounded data written")
+  }, error = function(e) {
+    write_log(paste0("ERROR writing summary file for rounded data: ", conditionMessage(e)))
+  })
+
+  # --- Analysis on Q^2 data ---
+  write_log("analyze_topological_charge: starting analysis on Q^2 data")
+  ac_data_q_squared <- ac_data^2
+
+  boot_q_squared <- tryCatch({ hadron::bootstrap.analysis(ac_data_q_squared, skip = skip_initial, pl = FALSE) }, error = function(e) { return(NULL) })
+  # uwerr on Q^2 data
+  uw_q_squared <- tryCatch({ hadron::uwerrprimary(ac_data_q_squared, pl = FALSE) }, error = function(e) {
+    write_log(paste0("ERROR computing uwerrprimary on Q^2 data: ", conditionMessage(e)))
+    return(NULL)
+  })
+  tauint_q_squared <- if (!is.null(uw_q_squared)) uw_q_squared$tauint else NA
+  dtauint_q_squared <- if (!is.null(uw_q_squared)) uw_q_squared$dtauint else NA
+  write_log(paste0("analyze_topological_charge: Q^2 uwerr results - tauint=", tauint_q_squared, ", dtauint=", dtauint_q_squared))
+
+  # computeacf on Q^2 data
+  acf_result_q_squared <- tryCatch({ hadron::computeacf(ac_data_q_squared, W.max = floor(length(ac_data_q_squared)/5)) }, error = function(e) {
+    write_log(paste0("ERROR computing computeacf on Q^2 data: ", conditionMessage(e)))
+    return(NULL)
+  })
+  acf_tau_q_squared <- if (!is.null(acf_result_q_squared)) acf_result_q_squared$tau else NA
+  acf_dtau_q_squared <- if (!is.null(acf_result_q_squared)) acf_result_q_squared$dtau else NA
+  boot_tau_q_squared <- if (!is.null(boot_q_squared)) max(boot_q_squared$Tauint) else NA
+  write_log(paste0("analyze_topological_charge: Q^2 computeacf results - tau=", acf_tau_q_squared, ", dtau=", acf_dtau_q_squared))
+
+  # Append Q^2 results to summary file
+  tryCatch({
+    cat("\n--- Q^2 Data ---\n", file = summary_file, append = TRUE)
+    cat(sprintf("uwerr_tauint: %s\n", as.character(tauint_q_squared)), file = summary_file, append = TRUE)
+    cat(sprintf("uwerr_dtauint: %s\n", as.character(dtauint_q_squared)), file = summary_file, append = TRUE)
+    cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_q_squared)), file = summary_file, append = TRUE)
+    cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_q_squared)), file = summary_file, append = TRUE)
+    cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_q_squared)), file = summary_file, append = TRUE)
+    write_log("analyze_topological_charge: summary for Q^2 data written")
+  }, error = function(e) {
+    write_log(paste0("ERROR writing summary file for Q^2 data: ", conditionMessage(e)))
+  })
+
+  # --- Analysis on Q^2 from rounded data ---
+  write_log("analyze_topological_charge: starting analysis on Q^2 from rounded data")
+  ac_data_rounded_q_squared <- ac_data_rounded^2
+
+  boot_rounded_q_squared <- tryCatch({ hadron::bootstrap.analysis(ac_data_rounded_q_squared, skip = skip_initial, pl = FALSE) }, error = function(e) { return(NULL) })
+  # uwerr on Q^2 from rounded data
+  uw_rounded_q_squared <- tryCatch({ hadron::uwerrprimary(ac_data_rounded_q_squared, pl = FALSE) }, error = function(e) {
+    write_log(paste0("ERROR computing uwerrprimary on Q^2 from rounded data: ", conditionMessage(e)))
+    return(NULL)
+  })
+  tauint_rounded_q_squared <- if (!is.null(uw_rounded_q_squared)) uw_rounded_q_squared$tauint else NA
+  dtauint_rounded_q_squared <- if (!is.null(uw_rounded_q_squared)) uw_rounded_q_squared$dtauint else NA
+  write_log(paste0("analyze_topological_charge: Q^2 from rounded uwerr results - tauint=", tauint_rounded_q_squared, ", dtauint=", dtauint_rounded_q_squared))
+
+  # computeacf on Q^2 from rounded data
+  acf_result_rounded_q_squared <- tryCatch({ hadron::computeacf(ac_data_rounded_q_squared, W.max = floor(length(ac_data_rounded_q_squared)/5)) }, error = function(e) {
+    write_log(paste0("ERROR computing computeacf on Q^2 from rounded data: ", conditionMessage(e)))
+    return(NULL)
+  })
+  acf_tau_rounded_q_squared <- if (!is.null(acf_result_rounded_q_squared)) acf_result_rounded_q_squared$tau else NA
+  acf_dtau_rounded_q_squared <- if (!is.null(acf_result_rounded_q_squared)) acf_result_rounded_q_squared$dtau else NA
+  boot_tau_rounded_q_squared <- if (!is.null(boot_rounded_q_squared)) max(boot_rounded_q_squared$Tauint) else NA
+  write_log(paste0("analyze_topological_charge: Q^2 from rounded computeacf results - tau=", acf_tau_rounded_q_squared, ", dtau=", acf_dtau_rounded_q_squared))
+
+  # Append Q^2 from rounded results to summary file
+  tryCatch({
+    cat("\n--- Rounded Q^2 Data ---\n", file = summary_file, append = TRUE)
+    cat(sprintf("uwerr_tauint: %s\n", as.character(tauint_rounded_q_squared)), file = summary_file, append = TRUE)
+    cat(sprintf("uwerr_dtauint: %s\n", as.character(dtauint_rounded_q_squared)), file = summary_file, append = TRUE)
+    cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_rounded_q_squared)), file = summary_file, append = TRUE)
+    cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_rounded_q_squared)), file = summary_file, append = TRUE)
+    cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_rounded_q_squared)), file = summary_file, append = TRUE)
+    write_log("analyze_topological_charge: summary for Q^2 from rounded data written")
+  }, error = function(e) {
+    write_log(paste0("ERROR writing summary file for Q^2 from rounded data: ", conditionMessage(e)))
   })
 
   return(list(timeseries = timeseries_plot, autocorr = uw, tauint = tauint, dtauint = dtauint))
