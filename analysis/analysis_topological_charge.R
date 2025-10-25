@@ -116,7 +116,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   ac_data <- data$topo[(skip_initial + 1):nrow(data)]
   ac_data <- as.numeric(ac_data)
-  ac_data <- ac_data[!is.na(ac_data)]
+  ac_data <- ac_data[!is.na(ac_data) & is.finite(ac_data)]
 
   write_log(paste0("analyze_topological_charge: computing uwerr on ", length(ac_data), " samples after skipping ", skip_initial))
   if (length(ac_data) < 2) {

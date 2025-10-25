@@ -18,15 +18,30 @@ read_yaml_config <- function(directory) {
 # Function to read data files
 read_data_file <- function(filepath) {
   if (!file.exists(filepath)) stop(paste("File not found:", filepath))
+  
   # Read first line, remove leading # if present, use as header
   con <- file(filepath, "r")
   header_line <- readLines(con, n = 1)
   close(con)
+  
   header_line <- gsub("^#\\s*", "", header_line)
   col_names <- strsplit(header_line, ",")[[1]]
   col_names <- trimws(col_names)
-  # Read rest of file, skipping first line
-  data <- read.table(filepath, header = FALSE, sep = ",", skip = 1, comment.char = "#", stringsAsFactors = FALSE)
+  
+  # Make column names syntactically valid for R
+  col_names <- make.names(col_names)
+  
+  # Read rest of file, skipping first line, using comma as separator and stripping whitespace
+  data <- read.table(filepath, header = FALSE, sep = ",", skip = 1, comment.char = "#", stringsAsFactors = FALSE, strip.white = TRUE)
+  
+  # Ensure the number of columns match
+  if (ncol(data) != length(col_names)) {
+    warning(paste("Column name/data mismatch in", filepath, ". Expected", length(col_names), "got", ncol(data), ". Truncating to fit."))
+    min_cols <- min(ncol(data), length(col_names))
+    data <- data[, 1:min_cols, drop = FALSE]
+    col_names <- col_names[1:min_cols]
+  }
+  
   colnames(data) <- col_names
   data
 }
