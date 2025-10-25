@@ -4,3 +4,4 @@
 .venv
 output
 analysis/*.log
+example_data/*/

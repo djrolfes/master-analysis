@@ -173,5 +173,6 @@ if (length(args) < 1) {
 }
 
 directory <- args[1]
+assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
 skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
 analyze_topological_charge(directory, skip_initial = skip_initial)
