@@ -186,7 +186,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # Also compute ACF using computeacf
   acf_result <- tryCatch(
     {
-      hadron::computeacf(ac_data, W.max = floor(length(ac_data) / 5))
+      hadron::computeacf(ac_data, floor(length(ac_data) / 5))
     },
     error = function(e) {
       write_log(paste0("ERROR computing computeacf: ", conditionMessage(e)))
@@ -245,7 +245,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # computeacf on rounded data
   acf_result_rounded <- tryCatch(
     {
-      hadron::computeacf(ac_data_rounded, W.max = floor(length(ac_data_rounded) / 5))
+      hadron::computeacf(ac_data_rounded, floor(length(ac_data_rounded) / 5))
     },
     error = function(e) {
       write_log(paste0("ERROR computing computeacf on rounded data: ", conditionMessage(e)))
@@ -302,7 +302,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # computeacf on Q^2 data
   acf_result_q_squared <- tryCatch(
     {
-      hadron::computeacf(ac_data_q_squared, W.max = floor(length(ac_data_q_squared) / 5))
+      hadron::computeacf(ac_data_q_squared, floor(length(ac_data_q_squared) / 5))
     },
     error = function(e) {
       write_log(paste0("ERROR computing computeacf on Q^2 data: ", conditionMessage(e)))
@@ -359,7 +359,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # computeacf on Q^2 from rounded data
   acf_result_rounded_q_squared <- tryCatch(
     {
-      hadron::computeacf(ac_data_rounded_q_squared, W.max = floor(length(ac_data_rounded_q_squared) / 5))
+      hadron::computeacf(ac_data_rounded_q_squared, floor(length(ac_data_rounded_q_squared) / 5))
     },
     error = function(e) {
       write_log(paste0("ERROR computing computeacf on Q^2 from rounded data: ", conditionMessage(e)))

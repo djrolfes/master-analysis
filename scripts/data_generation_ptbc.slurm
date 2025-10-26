@@ -5,7 +5,7 @@
 #SBATCH --job-name=wf_data_generation
 #SBATCH --output=output/slurm-ptbc-data-%j.out
 #SBATCH --error=output/slurm-ptbc-data-%j.err
-#SBATCH --time=24:00:00
+#SBATCH --time=3-24:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=8
 #SBATCH --ntasks-per-node=8

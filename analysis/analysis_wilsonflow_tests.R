@@ -22,9 +22,9 @@ bootstrap_analysis <- function(data, n_boot = 200) {
     pivot_longer(-hmc_step, names_to = "flow_time", values_to = "observable") %>%
     group_by(flow_time) %>%
     summarise(
-      boot_result = hadron::bootstrap.meanerror(observable, n_boot),
-      mean = boot_result["mean"],
-      error = boot_result["error"]
+      mean = mean(observable),
+      error = hadron::bootstrap.meanerror(observable, n_boot),
+      .groups = "drop"
     )
 
   write_log("bootstrap_analysis: completed aggregation")
@@ -64,7 +64,8 @@ compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 200) {
     group_by(flow_time) %>%
     summarise(
       mean = mean(dist),
-      error = hadron::bootstrap.meanerror(dist, n_boot)
+      error = hadron::bootstrap.meanerror(dist, n_boot),
+      .groups = "drop"
     )
   write_log("compute_avg_dist_to_integer: completed aggregation")
   print(head(avg_dist))
@@ -235,6 +236,7 @@ analyze_wilsonflow <- function(directory, skip_steps = 200) {
   write_log(paste0("analyze_wilsonflow: start for directory=", directory, " skip_steps=", skip_steps))
 
   # Wrap entire analysis in tryCatch so errors are logged
+  tryCatch(
     {
       # Read the Wilson flow data
       write_log("analyze_wilsonflow: reading topological_charge data")

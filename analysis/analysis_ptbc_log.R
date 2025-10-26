@@ -21,10 +21,10 @@ analyze_acceptance <- function(directory, data) {
   accepts_matrix <- do.call(rbind, data$accepts)
   # Use bootstrap.meanError on each column (rank)
   bootstrap_results <- apply(accepts_matrix, 2, function(col) {
-    # bootstrap.meanError is suitable for bootstrapping the mean of a vector
-    result <- hadron::bootstrap.meanerror(col, R = 100)
-    # The result is a vector with mean and error
-    c(mean = mean(col), error = result)
+    # bootstrap.meanerror returns only the error
+    error <- hadron::bootstrap.meanerror(col, R = 100)
+    # Compute mean separately
+    c(mean = mean(col), error = error)
   })
 
   # Prepare data for plotting
