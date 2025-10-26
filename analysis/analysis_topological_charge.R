@@ -129,8 +129,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   # --- Bootstrap analysis of the topological charge (mean ± error) ---
   out_boot_pdf <- file.path(directory, "topological_charge_bootstrap.pdf")
-  out_boot_txt <- file.path(directory, "topological_charge_bootstrap.txt")
-  write_log(paste0("analyze_topological_charge: computing bootstrap.analysis and saving to ", out_boot_pdf, " and ", out_boot_txt))
+  write_log(paste0("analyze_topological_charge: computing bootstrap.analysis and saving to ", out_boot_pdf))
 
   boot_original <- NULL
   tryCatch(
@@ -160,7 +159,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
     return(list(timeseries = timeseries_plot, autocorr = NULL))
   }
 
-  ac_data <- data$topo[(skip_initial + 1):nrow(data)]
+  ac_data <- data$topo[skip_initial < data$step]
   ac_data <- as.numeric(ac_data)
   ac_data <- ac_data[!is.na(ac_data)]
 
