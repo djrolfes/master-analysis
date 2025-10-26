@@ -4,4 +4,5 @@
 .venv
 output
 analysis/*.log
+analysis/*.pdf
 example_data/*/

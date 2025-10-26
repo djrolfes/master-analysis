@@ -186,7 +186,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # Also compute ACF using computeacf
   acf_result <- tryCatch(
     {
-      hadron::computeacf(ac_data)
+      hadron::computeacf(ac_data, W.max = floor(length(ac_data) / 5))
     },
     error = function(e) {
       write_log(paste0("ERROR computing computeacf: ", conditionMessage(e)))
