@@ -18,6 +18,12 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     module load GCC/11.2.0
     module load R
     module load Python
+    
+    # Disable advanced CPU instructions in BLAS to prevent illegal instruction errors
+    # This is safer on heterogeneous clusters where compile-time and runtime CPUs may differ
+    export OPENBLAS_CORETYPE=CORE2
+    export MKL_ENABLE_INSTRUCTIONS=SSE4_2
+    export OMP_NUM_THREADS=1  # Prevent BLAS from using multiple threads
 fi
 
 # --- Parse optional -skip flag ---

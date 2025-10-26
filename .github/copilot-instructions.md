@@ -49,15 +49,142 @@ read_data_plaquette_filename <- function(config, base_dir) {
 ```
 
 ### Hadron Package Integration
-A `cf` (correlation function) object is a specialized R object for storing time-series data from lattice simulations, along with metadata. The `hadron` package provides several functions for analyzing these objects and other time-series data.
+
+#### Correlation Function (`cf`) Objects
+
+A `cf` (correlation function) object is a specialized R object for storing time-series data from lattice simulations, along with metadata. It uses a **mixin pattern** where you build up the object by adding layers of functionality.
+
+**Core Concept**: The `cf` object stores data in a matrix format where:
+- **Rows** = individual measurements (gauge configurations)
+- **Columns** = time slices OR different observables
+
+**When to use `cf` objects vs. raw vectors**:
+- Use `cf` objects when you have structured data with time/spatial dimensions (e.g., correlation functions, Wilson flow observables at different flow times)
+- Use raw vectors with `uwerrprimary()` or `bootstrap.analysis()` for scalar observables per configuration (e.g., plaquette, topological charge, single action density value)
+
+#### Building a `cf` Object (Layer-by-Layer)
+
+```r
+# Step 1: Create empty cf object
+my_cf <- cf()
+
+# Step 2: Add original data (REQUIRED)
+#   data_matrix: N_configs × N_timeslices (or N_observables)
+my_cf <- cf_orig(my_cf, cf = data_matrix)
+
+# Step 3: Add metadata (REQUIRED for most operations)
+my_cf <- cf_meta(my_cf,
+                 nrObs = 1,              # Number of different observables
+                 Time = 48,              # Time extent (or number of columns if not time-based)
+                 nrStypes = 1,           # Number of smearing types
+                 symmetrised = FALSE)    # Whether data is symmetrized
+
+# Step 4: Add bootstrap samples (REQUIRED for error analysis)
+my_cf <- bootstrap.cf(my_cf,
+                      boot.R = 400,      # Number of bootstrap samples
+                      boot.l = 2,        # Block length
+                      seed = 1234)       # RNG seed
+```
+
+#### Single Observable (Scalar per Configuration)
+
+For observables like **topological charge** or **plaquette** (one value per configuration):
+
+```r
+# Read data
+data <- read.table("topological_charge.txt", header = TRUE)
+topo_charge <- data$topological_charge  # Vector of N values
+
+# Create cf object: N rows × 1 column
+cf_data <- matrix(topo_charge, ncol = 1)
+topo_cf <- cf() %>%
+  cf_orig(cf = cf_data) %>%
+  cf_meta(nrObs = 1, Time = 1, nrStypes = 1, symmetrised = FALSE) %>%
+  bootstrap.cf(boot.R = 400, boot.l = 2, seed = 1234)
+
+# Use it
+plot(topo_cf)
+summary(topo_cf)
+```
+
+#### Multiple Time Slices (e.g., Wilson Flow Observable)
+
+For observables measured at different **flow times** or **time slices**:
+
+```r
+# Data structure: each row = configuration, each column = flow time
+# Example: 100 configs × 20 flow times
+flow_data <- matrix(your_data, nrow = 100, ncol = 20)
+
+flow_cf <- cf() %>%
+  cf_orig(cf = flow_data) %>%
+  cf_meta(nrObs = 1, Time = 20, nrStypes = 1, symmetrised = FALSE) %>%
+  bootstrap.cf(boot.R = 400, boot.l = 2, seed = 1234)
+
+# Plot will show observable vs. flow time with error bands
+plot(flow_cf)
+```
+
+#### Multiple Observables (Combining Different Measurements)
+
+To combine **multiple different observables** into one `cf` object (needed for GEVP or simultaneous analysis):
+
+```r
+# Create individual cf objects first
+obs1_cf <- cf() %>% 
+  cf_orig(cf = matrix(obs1_data, ncol = Time)) %>%
+  cf_meta(nrObs = 1, Time = Time, nrStypes = 1, symmetrised = FALSE)
+
+obs2_cf <- cf() %>%
+  cf_orig(cf = matrix(obs2_data, ncol = Time)) %>%
+  cf_meta(nrObs = 1, Time = Time, nrStypes = 1, symmetrised = FALSE)
+
+# Concatenate BEFORE bootstrapping (important!)
+combined_cf <- c(obs1_cf, obs2_cf)  # Now nrObs = 2
+combined_cf <- cf_meta(combined_cf, nrObs = 2, Time = Time, nrStypes = 1, symmetrised = FALSE)
+combined_cf <- bootstrap.cf(combined_cf, boot.R = 400, boot.l = 2, seed = 1234)
+
+# Requirements for concatenation (c.cf):
+# - Same Time extent
+# - Same number of measurements (rows)
+# - Same symmetrisation
+# - Same nrStypes
+```
+
+#### Key `hadron` Functions for `cf` Objects
+
+- **`cf()`**: Creates an empty `cf` object.
+
+- **`cf_orig(.cf, cf, icf = NULL)`**: Adds original data to a `cf` object.
+  - `.cf`: The `cf` object to extend.
+  - `cf`: Numeric matrix (N_measurements × N_timeslices) of real data.
+  - `icf`: Optional imaginary part (use with caution, many functions ignore it).
+
+- **`cf_meta(.cf, nrObs, Time, nrStypes, symmetrised)`**: Adds metadata.
+  - `nrObs`: Number of different observables in the object.
+  - `Time`: Time extent (or number of columns for non-time data).
+  - `nrStypes`: Number of smearing types (usually 1).
+  - `symmetrised`: Logical, whether data has been symmetrized.
 
 - **`bootstrap.cf(cf, boot.R, boot.l, ...)`**: Performs bootstrap resampling on a `cf` object to prepare it for statistical error analysis.
-  - `cf`: The correlation function object.
+  - `cf`: The correlation function object (must have `cf_orig` mixin).
   - `boot.R`: Number of bootstrap samples to generate (default: 400).
   - `boot.l`: Block length for the resampling to handle autocorrelations (default: 2).
   - `seed`: Seed for random number generation (default: 1234).
   - `sim`: Simulation type - "geom" (default) or "fixed" for block bootstrap.
-  - Returns: A `cf` object with bootstrap samples added.
+  - Returns: A `cf` object with bootstrap samples added (adds `cf_boot` mixin).
+
+- **`c.cf(...)`**: Concatenates multiple `cf` objects into one (increases `nrObs`).
+  - `...`: Multiple `cf` objects with compatible dimensions.
+  - Returns: A single `cf` object containing all observables.
+
+- **`plot.cf(x, ...)`**: Plots the correlation function with error bands.
+  - `x`: A `cf` object with bootstrap samples (`cf_boot` mixin required).
+  - Returns: Invisibly returns a data frame with `t`, `CF`, and `Err` columns.
+
+#### Non-`cf` Functions for Simple Time Series
+
+For scalar observables (one value per configuration) that don't need the `cf` structure:
 
 - **`bootstrap.analysis(data, boot.R, boot.l, skip, ...)`**: Conducts a bootstrap analysis on a generic time series (a numeric vector) to determine the mean, error, and integrated autocorrelation time.
   - `data`: A numeric vector containing the time series.
@@ -94,6 +221,35 @@ A `cf` (correlation function) object is a specialized R object for storing time-
   - `W.max`: The maximum time lag to use for the calculation.
   - `Lambda`: Cut-off for estimating standard error of ACF (default: 100).
   - Returns: A `hadronacf` object with `tau`, `dtau`, `Gamma`, `dGamma`, etc.
+
+#### Practical Guidelines for Analysis Scripts
+
+**Use `cf` objects when**:
+- You have Wilson flow observables at multiple flow times
+- You have correlation functions with time structure
+- You need to combine multiple observables (e.g., for GEVP)
+- You want to leverage `hadron`'s built-in plotting for time-dependent data
+
+**Use raw vectors with `uwerrprimary()`/`bootstrap.analysis()` when**:
+- You have scalar observables (plaquette, single action density, acceptance rate)
+- You have topological charge (one value per configuration)
+- You want detailed autocorrelation analysis
+- You're analyzing thermalization or simple time series
+
+**Example: Rewriting `analysis_topological_charge.R` with `cf` objects**:
+```r
+# Current approach (raw vector)
+topo_data <- read_data_file(topo_path)$topological_charge
+uw_result <- uwerrprimary(topo_data, pl = TRUE)
+
+# Alternative with cf object
+cf_data <- matrix(topo_data, ncol = 1)
+topo_cf <- cf() %>%
+  cf_orig(cf = cf_data) %>%
+  cf_meta(nrObs = 1, Time = 1, nrStypes = 1, symmetrised = FALSE) %>%
+  bootstrap.cf(boot.R = 400, boot.l = 2, seed = 1234)
+plot(topo_cf)  # Automatic plotting with error bands
+```
 
 - **Installation**: Use `scripts/check_and_install_hadron.sh` for dependencies.
 - **Documentation**: Generate with `R CMD Rd2pdf .` in `extern/hadron/man/`.
