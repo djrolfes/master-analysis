@@ -13,7 +13,15 @@ write_log <- function(msg) {
 }
 
 # Safe wrapper for computeacf that handles BLAS/CPU incompatibility
+# Note: On some clusters, this function will cause R to abort due to BLAS incompatibility
+# The error cannot be caught with tryCatch as it occurs at the C library level
 safe_computeacf <- function(data, W.max, label = "data") {
+  # Check if we should skip computeacf entirely (set this env var to disable)
+  if (Sys.getenv("SKIP_COMPUTEACF", "0") == "1") {
+    write_log(paste0("SKIPPED computeacf for ", label, ": SKIP_COMPUTEACF=1"))
+    return(NULL)
+  }
+
   result <- tryCatch(
     {
       hadron::computeacf(data, W.max)
@@ -210,7 +218,19 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   acf_tau <- if (!is.null(acf_result)) acf_result$tau else NA
   acf_dtau <- if (!is.null(acf_result)) acf_result$dtau else NA
-  boot_tau <- if (!is.null(boot_original)) max(boot_original$Tauint) else NA
+
+  # Extract tau and its error from bootstrap.analysis
+  # Use the row with maximum Tauint and propagate error from DError
+  boot_tau <- NA
+  boot_dtau <- NA
+  if (!is.null(boot_original)) {
+    max_idx <- which.max(boot_original$Tauint)
+    boot_tau <- boot_original$Tauint[max_idx]
+    # Propagate error: Tauint = Error^2 / (error.naive^2 * 2)
+    # dTauint/dError = 2*Error / (error.naive^2 * 2) = Error / error.naive^2
+    error_naive <- sd(data$topo[(skip_initial + 1):nrow(data)]) / sqrt(length(ac_data))
+    boot_dtau <- 2 * boot_original$Error[max_idx] * boot_original$DError[max_idx] / (error_naive^2)
+  }
 
   if (!is.null(acf_result)) {
     write_log(paste0("analyze_topological_charge: computeacf results - tau=", acf_tau, ", dtau=", acf_dtau))
@@ -226,6 +246,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau)), file = summary_file, append = TRUE)
       cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis dtau: %s\n", as.character(boot_dtau)), file = summary_file, append = TRUE)
       write_log("analyze_topological_charge: summary for original data written")
     },
     error = function(e) {
@@ -264,7 +285,16 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   acf_tau_rounded <- if (!is.null(acf_result_rounded)) acf_result_rounded$tau else NA
   acf_dtau_rounded <- if (!is.null(acf_result_rounded)) acf_result_rounded$dtau else NA
-  boot_tau_rounded <- if (!is.null(boot_rounded)) max(boot_rounded$Tauint) else NA
+
+  # Extract tau and its error from bootstrap.analysis for rounded data
+  boot_tau_rounded <- NA
+  boot_dtau_rounded <- NA
+  if (!is.null(boot_rounded)) {
+    max_idx <- which.max(boot_rounded$Tauint)
+    boot_tau_rounded <- boot_rounded$Tauint[max_idx]
+    error_naive_rounded <- sd(ac_data_rounded) / sqrt(length(ac_data_rounded))
+    boot_dtau_rounded <- 2 * boot_rounded$Error[max_idx] * boot_rounded$DError[max_idx] / (error_naive_rounded^2)
+  }
 
   if (!is.null(acf_result_rounded)) {
     write_log(paste0("analyze_topological_charge: rounded computeacf results - tau=", acf_tau_rounded, ", dtau=", acf_dtau_rounded))
@@ -279,6 +309,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_rounded)), file = summary_file, append = TRUE)
       cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_rounded)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_rounded)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis dtau: %s\n", as.character(boot_dtau_rounded)), file = summary_file, append = TRUE)
       write_log("analyze_topological_charge: summary for rounded data written")
     },
     error = function(e) {
@@ -317,7 +348,16 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   acf_tau_q_squared <- if (!is.null(acf_result_q_squared)) acf_result_q_squared$tau else NA
   acf_dtau_q_squared <- if (!is.null(acf_result_q_squared)) acf_result_q_squared$dtau else NA
-  boot_tau_q_squared <- if (!is.null(boot_q_squared)) max(boot_q_squared$Tauint) else NA
+
+  # Extract tau and its error from bootstrap.analysis for Q^2 data
+  boot_tau_q_squared <- NA
+  boot_dtau_q_squared <- NA
+  if (!is.null(boot_q_squared)) {
+    max_idx <- which.max(boot_q_squared$Tauint)
+    boot_tau_q_squared <- boot_q_squared$Tauint[max_idx]
+    error_naive_q_squared <- sd(ac_data_q_squared) / sqrt(length(ac_data_q_squared))
+    boot_dtau_q_squared <- 2 * boot_q_squared$Error[max_idx] * boot_q_squared$DError[max_idx] / (error_naive_q_squared^2)
+  }
 
   if (!is.null(acf_result_q_squared)) {
     write_log(paste0("analyze_topological_charge: Q^2 computeacf results - tau=", acf_tau_q_squared, ", dtau=", acf_dtau_q_squared))
@@ -332,6 +372,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_q_squared)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis dtau: %s\n", as.character(boot_dtau_q_squared)), file = summary_file, append = TRUE)
       write_log("analyze_topological_charge: summary for Q^2 data written")
     },
     error = function(e) {
@@ -370,7 +411,16 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   acf_tau_rounded_q_squared <- if (!is.null(acf_result_rounded_q_squared)) acf_result_rounded_q_squared$tau else NA
   acf_dtau_rounded_q_squared <- if (!is.null(acf_result_rounded_q_squared)) acf_result_rounded_q_squared$dtau else NA
-  boot_tau_rounded_q_squared <- if (!is.null(boot_rounded_q_squared)) max(boot_rounded_q_squared$Tauint) else NA
+
+  # Extract tau and its error from bootstrap.analysis for rounded Q^2 data
+  boot_tau_rounded_q_squared <- NA
+  boot_dtau_rounded_q_squared <- NA
+  if (!is.null(boot_rounded_q_squared)) {
+    max_idx <- which.max(boot_rounded_q_squared$Tauint)
+    boot_tau_rounded_q_squared <- boot_rounded_q_squared$Tauint[max_idx]
+    error_naive_rounded_q_squared <- sd(ac_data_rounded_q_squared) / sqrt(length(ac_data_rounded_q_squared))
+    boot_dtau_rounded_q_squared <- 2 * boot_rounded_q_squared$Error[max_idx] * boot_rounded_q_squared$DError[max_idx] / (error_naive_rounded_q_squared^2)
+  }
 
   if (!is.null(acf_result_rounded_q_squared)) {
     write_log(paste0("analyze_topological_charge: Q^2 from rounded computeacf results - tau=", acf_tau_rounded_q_squared, ", dtau=", acf_dtau_rounded_q_squared))
@@ -385,6 +435,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_rounded_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_rounded_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_rounded_q_squared)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis dtau: %s\n", as.character(boot_dtau_rounded_q_squared)), file = summary_file, append = TRUE)
       write_log("analyze_topological_charge: summary for Q^2 from rounded data written")
     },
     error = function(e) {

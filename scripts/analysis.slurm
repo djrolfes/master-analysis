@@ -24,6 +24,10 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     export OPENBLAS_CORETYPE=CORE2
     export MKL_ENABLE_INSTRUCTIONS=SSE4_2
     export OMP_NUM_THREADS=1  # Prevent BLAS from using multiple threads
+    
+    # Skip computeacf on cluster due to BLAS incompatibility (illegal instruction errors)
+    # This function uses tcrossprod which triggers CPU instruction mismatches
+    export SKIP_COMPUTEACF=1
 fi
 
 # --- Parse optional -skip flag ---
