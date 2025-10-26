@@ -1,7 +1,7 @@
 library(ggplot2)
 library(dplyr)
 library(hadron)
-source("data_io.R")  # relies on analysis/ being the working dir when called
+source("data_io.R") # relies on analysis/ being the working dir when called
 
 # simple per-run logger (compatible with other analysis_* scripts)
 write_log <- function(msg) {
@@ -23,12 +23,15 @@ analyze_wilsonflow_improv <- function(directory, filename = "action_densities_cl
   }
 
   # Read CSV produced by wilsonflow_improv_testing (comma separated)
-  df <- tryCatch({
-    read.csv(path, header = TRUE, stringsAsFactors = FALSE)
-  }, error = function(e) {
-    write_log(paste0("analyze_wilsonflow_improv: ERROR reading file: ", conditionMessage(e)))
-    stop(e)
-  })
+  df <- tryCatch(
+    {
+      read.csv(path, header = TRUE, stringsAsFactors = FALSE)
+    },
+    error = function(e) {
+      write_log(paste0("analyze_wilsonflow_improv: ERROR reading file: ", conditionMessage(e)))
+      stop(e)
+    }
+  )
 
   write_log(paste0("analyze_wilsonflow_improv: read ", nrow(df), " rows and ", ncol(df), " cols"))
 
@@ -60,7 +63,7 @@ analyze_wilsonflow_improv <- function(directory, filename = "action_densities_cl
   results <- lapply(factor_cols, function(fc) {
     # convert column to numeric safely
     v_norm <- as.numeric(df[[normal_col]])
-    v_imp  <- as.numeric(df[[fc]])
+    v_imp <- as.numeric(df[[fc]])
     absdiff <- abs(v_imp - v_norm)
     # Remove NA rows
     absdiff <- absdiff[!is.na(absdiff)]
@@ -70,21 +73,23 @@ analyze_wilsonflow_improv <- function(directory, filename = "action_densities_cl
     } else {
       br <- hadron::bootstrap.meanerror(absdiff, n_boot)
       # bootstrap.meanerror may return a named vector or scalar; ensure we extract mean/error
-      if (!is.null(names(br)) && all(c("mean","error") %in% names(br))) {
+      if (!is.null(names(br)) && all(c("mean", "error") %in% names(br))) {
         br <- c(mean = as.numeric(br["mean"]), error = as.numeric(br["error"]))
       } else if (length(br) == 2) {
         br <- as.numeric(br)
-        names(br) <- c("mean","error")
+        names(br) <- c("mean", "error")
       } else {
         # fallback: compute mean and sd/sqrt(N) as naive error
-        br <- c(mean = mean(absdiff), error = sd(absdiff)/sqrt(length(absdiff)))
+        br <- c(mean = mean(absdiff), error = sd(absdiff) / sqrt(length(absdiff)))
       }
     }
     # factor value parsed from header name if numeric
     fac_val <- suppressWarnings(as.numeric(fc))
     if (is.na(fac_val)) fac_val <- fc
     data.frame(factor = fac_val, mean = br["mean"], error = br["error"], stringsAsFactors = FALSE)
-  }) %>% bind_rows() %>% arrange(as.numeric(factor))
+  }) %>%
+    bind_rows() %>%
+    arrange(as.numeric(factor))
 
   write_log(paste0("analyze_wilsonflow_improv: aggregated ", nrow(results), " factor entries"))
 
@@ -92,19 +97,24 @@ analyze_wilsonflow_improv <- function(directory, filename = "action_densities_cl
   p <- ggplot(results, aes(x = as.numeric(factor), y = as.numeric(mean))) +
     geom_point() +
     geom_errorbar(aes(ymin = as.numeric(mean) - as.numeric(error), ymax = as.numeric(mean) + as.numeric(error)), width = 0.05) +
-    labs(title = "Absolute difference (improved - normal) of action density",
-         x = "Improvement factor (multiplied to eps)",
-         y = "Mean |improved - normal| ± error") +
+    labs(
+      title = "Absolute difference (improved - normal) of action density",
+      x = "Improvement factor (multiplied to eps)",
+      y = "Mean |improved - normal| ± error"
+    ) +
     theme_minimal()
 
   out_pdf <- file.path(directory, "wilsonflow_improv_absdiff_bootstrap.pdf")
   write_log(paste0("analyze_wilsonflow_improv: saving plot to ", out_pdf))
-  tryCatch({
-    ggsave(out_pdf, plot = p, width = 7, height = 5)
-    write_log(paste0("analyze_wilsonflow_improv: saved ", out_pdf))
-  }, error = function(e) {
-    write_log(paste0("analyze_wilsonflow_improv: ERROR saving plot: ", conditionMessage(e)))
-  })
+  tryCatch(
+    {
+      ggsave(out_pdf, plot = p, width = 7, height = 5)
+      write_log(paste0("analyze_wilsonflow_improv: saved ", out_pdf))
+    },
+    error = function(e) {
+      write_log(paste0("analyze_wilsonflow_improv: ERROR saving plot: ", conditionMessage(e)))
+    }
+  )
 
   return(list(data = results, plot = p))
 }

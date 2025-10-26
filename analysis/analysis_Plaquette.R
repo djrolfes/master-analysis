@@ -23,4 +23,3 @@ directory <- args[1]
 assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
 skip_steps <- args[2]
 analyze_plaquette(directory, skip_steps = as.integer(skip_steps))
-

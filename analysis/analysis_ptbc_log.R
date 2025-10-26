@@ -1,7 +1,7 @@
 library(ggplot2)
 library(dplyr)
 library(hadron)
-source("data_io.R")  # relies on analysis/ being the working dir when called
+source("data_io.R") # relies on analysis/ being the working dir when called
 
 # Simple per-run logger (compatible with other analysis_* scripts)
 write_log <- function(msg) {
@@ -26,14 +26,14 @@ analyze_acceptance <- function(directory, data) {
     # The result is a vector with mean and error
     c(mean = mean(col), error = result)
   })
-  
+
   # Prepare data for plotting
   plot_data <- data.frame(
     Rank = 0:(ncol(accepts_matrix) - 1),
     Mean = bootstrap_results["mean", ],
     Error = bootstrap_results["error", ]
   )
-  
+
   # Generate and save the plot
   p <- ggplot(plot_data, aes(x = Rank, y = Mean)) +
     geom_point(size = 3) +
@@ -44,10 +44,10 @@ analyze_acceptance <- function(directory, data) {
       y = "Acceptance Rate"
     ) +
     theme_minimal()
-  
-  ggsave(file.path(directory,"acceptance_by_rank.pdf"), plot = p, width = 8, height = 6)
+
+  ggsave(file.path(directory, "acceptance_by_rank.pdf"), plot = p, width = 8, height = 6)
   write_log("Acceptance analysis plot saved to acceptance_by_rank.pdf")
-  
+
   return(plot_data)
 }
 
@@ -56,26 +56,26 @@ get_swap_details_for_row <- function(i, data) {
   # For a given row 'i', get the state of defects from the previous row 'i-1'
   current_defects <- data$defects[[i - 1]]
   num_defects <- length(current_defects)
-  
+
   row <- data[i, ]
   swap_start <- row$swap_start
   accepts <- row$accepts[[1]]
   delta_H_swaps <- row$delta_H_swap[[1]]
-  
+
   row_swap_details <- list()
-  
+
   for (j in seq_along(accepts)) {
     idx1 <- (swap_start + j - 1) %% num_defects
     idx2 <- (idx1 + 1) %% num_defects
-    
+
     r_idx1 <- idx1 + 1
     r_idx2 <- idx2 + 1
-    
+
     defect1 <- current_defects[r_idx1]
     defect2 <- current_defects[r_idx2]
     accepted <- accepts[j]
     delta_H <- delta_H_swaps[j]
-    
+
     # Note: This logic assumes the 'defects' in row 'i-1' are the starting point
     # for the swaps in row 'i'. The swaps are calculated but not chained within this function.
     row_swap_details[[length(row_swap_details) + 1]] <- list(
@@ -86,14 +86,14 @@ get_swap_details_for_row <- function(i, data) {
       accepted = accepted,
       delta_H_swap = delta_H
     )
-    
+
     if (accepted == 1) {
       # Swap for the next attempt in the same step
       current_defects[r_idx1] <- defect2
       current_defects[r_idx2] <- defect1
     }
   }
-  
+
   return(row_swap_details)
 }
 
@@ -103,18 +103,18 @@ track_defect_swaps <- function(directory, data) {
     write_log("Defect tracking skipped: not enough data rows.")
     return(NULL)
   }
-  
+
   # Use lapply to process rows 2 to N. This can be swapped for a parallel version.
   list_of_swap_lists <- lapply(2:nrow(data), get_swap_details_for_row, data = data)
-  
+
   # Combine the list of lists into a single data frame
   all_swap_details <- unlist(list_of_swap_lists, recursive = FALSE)
-  
+
   swap_df <- dplyr::bind_rows(all_swap_details)
-#   output_path <- file.path(directory, "defect_swap_details.csv")
-#   write.csv(swap_df, output_path, row.names = FALSE)
-#   write_log(paste("Defect swap details saved to", output_path))
-  
+  #   output_path <- file.path(directory, "defect_swap_details.csv")
+  #   write.csv(swap_df, output_path, row.names = FALSE)
+  #   write_log(paste("Defect swap details saved to", output_path))
+
   return(swap_df)
 }
 
@@ -124,22 +124,22 @@ analyze_acceptance_by_defect_distance <- function(directory, swap_df, num_bins =
     write_log("Acceptance by defect distance analysis skipped: no swap data.")
     return(NULL)
   }
-  
+
   # Calculate defect distance and create bins for it
   binned_data <- swap_df %>%
     mutate(defect_dist = abs(defect1 - defect2)) %>%
     filter(!is.na(defect_dist)) %>%
     mutate(dist_bin = cut(defect_dist, breaks = num_bins))
-  
+
   # Group by the new bins and calculate the mean acceptance rate and its error
   acceptance_by_bin <- binned_data %>%
     group_by(dist_bin) %>%
     summarise(
       acceptance_rate = mean(accepted),
       acceptance_error = hadron::bootstrap.meanerror(accepted, R = 100),
-      .groups = 'drop'
+      .groups = "drop"
     )
-  
+
   # Create and save the histogram using the binned data
   p <- ggplot(acceptance_by_bin, aes(x = dist_bin, y = acceptance_rate)) +
     geom_col(fill = "steelblue") +
@@ -154,11 +154,11 @@ analyze_acceptance_by_defect_distance <- function(directory, swap_df, num_bins =
     ) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  
+
   output_path <- file.path(directory, "acceptance_by_defect_distance.pdf")
   ggsave(output_path, plot = p, width = 10, height = 6)
   write_log(paste("Acceptance by defect distance plot saved to", output_path))
-  
+
   return(acceptance_by_bin)
 }
 
@@ -168,25 +168,25 @@ analyze_delta_h_by_defect_distance <- function(directory, swap_df, num_bins = 30
     write_log("Delta_H by defect distance analysis skipped: no swap data.")
     return(NULL)
   }
-  
+
   # Calculate defect distance
   plot_data <- swap_df %>%
     mutate(defect_dist = abs(defect1 - defect2)) %>%
     filter(!is.na(defect_dist))
-    
+
   # Create bins with a fixed border at 0
   max_dist <- max(plot_data$defect_dist, na.rm = TRUE)
   breaks <- seq(0, max_dist, length.out = num_bins + 1)
   breaks <- unique(round(breaks, 5))
-  
+
   plot_data <- plot_data %>%
     mutate(dist_bin = cut(defect_dist, breaks = breaks, include.lowest = TRUE))
 
   # Define histogram breaks to ensure 0 is an edge
   min_h <- min(plot_data$delta_H_swap, na.rm = TRUE)
   max_h <- max(plot_data$delta_H_swap, na.rm = TRUE)
-  binwidth <- (max_h - min_h) / num_bins  # bins, as before
-  
+  binwidth <- (max_h - min_h) / num_bins # bins, as before
+
   # Create breaks from 0 outwards
   breaks_neg <- seq(0, min_h - binwidth, by = -binwidth)
   breaks_pos <- seq(0, max_h + binwidth, by = binwidth)
@@ -195,7 +195,7 @@ analyze_delta_h_by_defect_distance <- function(directory, swap_df, num_bins = 30
   # Create and save the faceted histogram
   p <- ggplot(plot_data, aes(x = delta_H_swap)) +
     geom_histogram(breaks = hist_breaks, fill = "blue", alpha = 0.7) +
-    facet_wrap(~ dist_bin, scales = "free_y") +
+    facet_wrap(~dist_bin, scales = "free_y") +
     labs(
       title = "Distribution of delta_H_swap by Binned Defect Distance",
       x = "delta_H_swap",
@@ -203,43 +203,43 @@ analyze_delta_h_by_defect_distance <- function(directory, swap_df, num_bins = 30
     ) +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
-  
+
   output_path <- file.path(directory, "delta_h_by_defect_distance.pdf")
   ggsave(output_path, plot = p, width = 12, height = 8)
   write_log(paste("Delta_H by defect distance plot saved to", output_path))
-  
+
   return(NULL)
 }
 
 # Main analysis function for PTBC log
 analyze_ptbc_log <- function(directory, skip_initial = 0) {
   write_log(paste("Starting PTBC log analysis for directory:", directory))
-  
+
   # Read config and data
   config <- read_yaml_config(directory)
   ptbc_data <- read_ptbc_simulation_log(directory)
-  
+
   if (skip_initial > 0) {
     ptbc_data <- ptbc_data %>% filter(step > skip_initial)
   }
   number_defects <- length(ptbc_data$defects[[1]])
   # Analyze acceptance
   acceptance_results <- analyze_acceptance(directory, ptbc_data)
-  
+
   if (!is.null(acceptance_results)) {
     write_log("Acceptance analysis results:")
     write_log(paste(capture.output(print(acceptance_results)), collapse = "\n"))
   }
-  
+
   # Track defects
   defect_swap_results <- track_defect_swaps(directory, ptbc_data)
   if (!is.null(defect_swap_results)) {
     write_log("Defect tracking analysis complete.")
     # New analysis based on defect swaps
-    analyze_acceptance_by_defect_distance(directory, defect_swap_results, num_bins = number_defects-1)
+    analyze_acceptance_by_defect_distance(directory, defect_swap_results, num_bins = number_defects - 1)
     analyze_delta_h_by_defect_distance(directory, defect_swap_results, num_bins = 30)
   }
-  
+
   write_log("PTBC log analysis finished.")
 }
 

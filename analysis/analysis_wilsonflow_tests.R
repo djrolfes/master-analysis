@@ -154,15 +154,18 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
     # Save both plots to the same PDF
     out_pdf <- file.path(directory, paste0("bootstrap_", sub("\\.txt$", "", name), ".pdf"))
     write_log(paste0("analyze_action_density: saving PDF to ", out_pdf))
-    tryCatch({
-      pdf(out_pdf, width = 8, height = 10)
-      print(action_density_plot)
-      print(ad_ft2_plot)
-      dev.off()
-      write_log(paste0("analyze_action_density: successfully saved ", out_pdf))
-    }, error = function(e) {
-      write_log(paste0("analyze_action_density: ERROR saving PDF for ", name, ": ", conditionMessage(e)))
-    })
+    tryCatch(
+      {
+        pdf(out_pdf, width = 8, height = 10)
+        print(action_density_plot)
+        print(ad_ft2_plot)
+        dev.off()
+        write_log(paste0("analyze_action_density: successfully saved ", out_pdf))
+      },
+      error = function(e) {
+        write_log(paste0("analyze_action_density: ERROR saving PDF for ", name, ": ", conditionMessage(e)))
+      }
+    )
 
     return(list(data = results, plot = action_density_plot, ad_ft2_data = boot_results, ad_ft2_plot = ad_ft2_plot, name = name))
   })
@@ -213,13 +216,16 @@ plot_topological_charge_samples <- function(data, directory, n_samples = 400, sk
 
   out_file <- file.path(directory, "topological_charge_samples.pdf")
   write_log(paste0("plot_topological_charge_samples: saving to ", out_file))
-  tryCatch({
-    ggsave(out_file, plot = sample_plot)
-    write_log(paste0("plot_topological_charge_samples: saved ", out_file))
-  }, error = function(e) {
-    write_log(paste0("plot_topological_charge_samples: ERROR saving plot: ", conditionMessage(e)))
-  })
-  
+  tryCatch(
+    {
+      ggsave(out_file, plot = sample_plot)
+      write_log(paste0("plot_topological_charge_samples: saved ", out_file))
+    },
+    error = function(e) {
+      write_log(paste0("plot_topological_charge_samples: ERROR saving plot: ", conditionMessage(e)))
+    }
+  )
+
   return(sample_plot)
 }
 
@@ -229,43 +235,52 @@ analyze_wilsonflow <- function(directory, skip_steps = 200) {
   write_log(paste0("analyze_wilsonflow: start for directory=", directory, " skip_steps=", skip_steps))
 
   # Wrap entire analysis in tryCatch so errors are logged
-  tryCatch({
-    # Read the Wilson flow data
-    write_log("analyze_wilsonflow: reading topological_charge data")
-    topological_charge_data <- read_wilsonflow_data(directory, "topological_charge_cumulative.txt")
-    write_log(paste0("analyze_wilsonflow: topological_charge rows = ", nrow(topological_charge_data)))
+    {
+      # Read the Wilson flow data
+      write_log("analyze_wilsonflow: reading topological_charge data")
+      topological_charge_data <- read_wilsonflow_data(directory, "topological_charge_cumulative.txt")
+      write_log(paste0("analyze_wilsonflow: topological_charge rows = ", nrow(topological_charge_data)))
 
-    # Plot a sample of the topological charge data
-    plot_topological_charge_samples(topological_charge_data, directory, n_samples = 400, skip_initial = skip_steps)
+      # Plot a sample of the topological charge data
+      plot_topological_charge_samples(topological_charge_data, directory, n_samples = 400, skip_initial = skip_steps)
 
-    # Compute distance to closest integer for each value
-    topological_charge_dist <- topological_charge_data %>%
-      mutate(across(-hmc_step, ~ abs(. - round(.))))
+      # Compute distance to closest integer for each value
+      topological_charge_dist <- topological_charge_data %>%
+        mutate(across(-hmc_step, ~ abs(. - round(.))))
 
-    # do a bootstrap
-    result <- compute_avg_dist_to_integer(topological_charge_dist, skip_steps = skip_steps)
-    avg_dist <- result$data
-    avg_dist_plot <- result$plot
-    out_avg_file <- file.path(directory, "topological_charge_avg_dist_bootstrap.pdf")
-    write_log(paste0("analyze_wilsonflow: saving avg dist plot to ", out_avg_file))
-    tryCatch({
-      ggsave(out_avg_file, plot = avg_dist_plot)
-      write_log(paste0("analyze_wilsonflow: saved avg dist plot to ", out_avg_file))
-    }, error = function(e) {
-      write_log(paste0("analyze_wilsonflow: ERROR saving avg dist plot: ", conditionMessage(e)))
-    })
+      # do a bootstrap
+      result <- compute_avg_dist_to_integer(topological_charge_dist, skip_steps = skip_steps)
+      avg_dist <- result$data
+      avg_dist_plot <- result$plot
+      out_avg_file <- file.path(directory, "topological_charge_avg_dist_bootstrap.pdf")
+      write_log(paste0("analyze_wilsonflow: saving avg dist plot to ", out_avg_file))
+      tryCatch(
+        {
+          ggsave(out_avg_file, plot = avg_dist_plot)
+          write_log(paste0("analyze_wilsonflow: saved avg dist plot to ", out_avg_file))
+        },
+        error = function(e) {
+          write_log(paste0("analyze_wilsonflow: ERROR saving avg dist plot: ", conditionMessage(e)))
+        }
+      )
 
+      action_density_result <- analyze_action_density(directory, skip_steps = skip_steps)
 
-    action_density_result <- analyze_action_density(directory, skip_steps = skip_steps)
-
-    write_log("analyze_wilsonflow: completed successfully")
-  }, error = function(e) {
-    write_log(paste0("analyze_wilsonflow: ERROR: ", conditionMessage(e)))
-    # attempt to capture a traceback
-    tb <- tryCatch({ paste(capture.output(traceback()), collapse = "\n") }, error = function(x) "<traceback failed>")
-    write_log(paste0("analyze_wilsonflow: TRACEBACK:\n", tb))
-    stop(e)
-  })
+      write_log("analyze_wilsonflow: completed successfully")
+    },
+    error = function(e) {
+      write_log(paste0("analyze_wilsonflow: ERROR: ", conditionMessage(e)))
+      # attempt to capture a traceback
+      tb <- tryCatch(
+        {
+          paste(capture.output(traceback()), collapse = "\n")
+        },
+        error = function(x) "<traceback failed>"
+      )
+      write_log(paste0("analyze_wilsonflow: TRACEBACK:\n", tb))
+      stop(e)
+    }
+  )
 }
 
 # Main execution
