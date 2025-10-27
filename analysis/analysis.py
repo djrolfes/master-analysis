@@ -57,7 +57,7 @@ def analyze_directory(directory, skip_steps="1250"):
         ["Rscript", "analysis_wilsonflow_tests.R", directory, str(skip_steps)],
         # ["Rscript", "analysis_wilsonflow_improv.R", directory, str(skip_steps)],
         ["Rscript", "analysis_W_temp.R", directory],
-        ["Rscript", "analysis_topological_charge.R", directory],
+        ["Rscript", "analysis_topological_charge.R", directory, str(skip_steps)],
         ["Rscript", "analysis_wilsonflow_details.R", directory, str(skip_steps)],
         ["Rscript", "analysis_ptbc_log.R", directory, str(skip_steps)],
     ]
@@ -88,5 +88,5 @@ if __name__ == '__main__':
         sys.exit(1)
 
     output_dir = sys.argv[1]
-    skip_steps = sys.argv[2] if len(sys.argv) == 3 else "250"
+    skip_steps = sys.argv[2] if len(sys.argv) == 3 else "1000"
     analyze_directory(output_dir, skip_steps)
