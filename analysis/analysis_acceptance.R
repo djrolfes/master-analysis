@@ -5,22 +5,8 @@ source("data_io.R") # Assuming data_io.R is in the working directory
 
 
 
-analyze_acceptance <- function(directory, skip_steps = 0) {
-    # Read the simulation log data
-    config <- read_yaml_config(directory)
-    filename <- config$SimulationLoggingParams$log_filename
-
-    # Build pattern to match simulation log files (not analysis outputs)
-    base_prefix <- sub("\\.txt$", "", filename)
-    pattern <- paste0("^", base_prefix, "(\\.(rank[0-9]+))?\\.txt$")
-
-    files <- list.files(directory, pattern = pattern, full.names = TRUE)
-    if (length(files) == 0) {
-        stop(paste0("No simulation log files found matching pattern '", pattern, "' in directory: ", directory))
-    }
-
-    # Process the first (or main) file
-    log_file <- files[1]
+analyze_acceptance_single_file <- function(log_file, directory, skip_steps = 0) {
+    # Analyze a single log file for acceptance thermalization
     message(paste0("Analyzing acceptance from: ", basename(log_file)))
 
     log_data <- read_data_file(log_file)
@@ -166,7 +152,13 @@ analyze_acceptance <- function(directory, skip_steps = 0) {
 
     # ===== STEP 3: CREATE VISUALIZATIONS =====
     # Create PDF with multiple plots
-    pdf_filename <- if (has_accept) "acceptance_bootstrap_analysis.pdf" else "acceptance_timeseries_analysis.pdf"
+    # Use rank-specific filename
+    base_name <- tools::file_path_sans_ext(basename(log_file))
+    pdf_filename <- if (has_accept) {
+        paste0(base_name, "_acceptance_bootstrap_analysis.pdf")
+    } else {
+        paste0(base_name, "_acceptance_timeseries_analysis.pdf")
+    }
     pdf(file.path(directory, pdf_filename), width = 12, height = 10)
 
     # Set up layout: Two timeseries on top (full width), histogram and analysis below
@@ -323,8 +315,10 @@ analyze_acceptance <- function(directory, skip_steps = 0) {
     dev.off()
 
     # ===== STEP 4: SAVE SUMMARY =====
-    summary_file <- file.path(directory, "acceptance_summary.txt")
+    # Use rank-specific summary filename
+    summary_file <- file.path(directory, paste0(base_name, "_acceptance_summary.txt"))
     cat("Acceptance Rate Analysis Summary\n", file = summary_file)
+    cat(sprintf("File: %s\n", basename(log_file)), file = summary_file, append = TRUE)
     cat("================================\n\n", file = summary_file, append = TRUE)
     cat(sprintf("Total measurements: %d\n", n_total), file = summary_file, append = TRUE)
     cat(sprintf("Used for analysis: %d\n\n", length(analysis_data)), file = summary_file, append = TRUE)
@@ -361,27 +355,197 @@ analyze_acceptance <- function(directory, skip_steps = 0) {
         ), file = summary_file, append = TRUE)
     }
 
-    message(sprintf("Acceptance analysis complete. Results saved to %s", directory))
-
-    # Return the recommended skip value (in HMC steps)
-    return(invisible(list(
-        recommended_skip = recommended_skip,
+    # Return the results (in HMC steps)
+    return(list(
+        file = basename(log_file),
+        thermalization_hmc_step = thermalization_hmc_step,
         thermalization_idx = thermalization_idx,
         mean_acceptance = mean_acceptance,
         error_acceptance = error_acceptance,
         tau_int = tau_int,
-        tau_error = tau_error
+        tau_error = tau_error,
+        measurement_interval = measurement_interval
+    ))
+}
+
+
+analyze_acceptance <- function(directory, skip_steps = 0, was_manual = FALSE) {
+    # Main function to analyze all log files and determine overall thermalization
+
+    # Read plaquette thermalization estimate
+    plaquette_skip_file <- file.path(directory, "recommended_skip.txt")
+    plaquette_skip <- 0
+    if (file.exists(plaquette_skip_file)) {
+        plaquette_skip <- as.integer(readLines(plaquette_skip_file, n = 1))
+        message(sprintf("Read plaquette thermalization estimate: %d HMC steps", plaquette_skip))
+    } else {
+        message("Warning: No plaquette thermalization estimate found (recommended_skip.txt)")
+    }
+
+    # Read the simulation log configuration
+    config <- read_yaml_config(directory)
+    filename <- config$SimulationLoggingParams$log_filename
+
+    # Build pattern to match simulation log files (not analysis outputs)
+    base_prefix <- sub("\\.txt$", "", filename)
+    pattern <- paste0("^", base_prefix, "(\\.(rank[0-9]+))?\\.txt$")
+
+    files <- list.files(directory, pattern = pattern, full.names = TRUE)
+    if (length(files) == 0) {
+        stop(paste0("No simulation log files found matching pattern '", pattern, "' in directory: ", directory))
+    }
+
+    message(sprintf("Found %d simulation log file(s) to analyze", length(files)))
+
+    # Analyze each file
+    results <- list()
+    for (log_file in files) {
+        result <- tryCatch(
+            {
+                analyze_acceptance_single_file(log_file, directory, skip_steps)
+            },
+            error = function(e) {
+                warning(paste0("Failed to analyze ", basename(log_file), ": ", conditionMessage(e)))
+                return(NULL)
+            }
+        )
+        if (!is.null(result)) {
+            results[[basename(log_file)]] <- result
+        }
+    }
+
+    if (length(results) == 0) {
+        stop("Failed to analyze any log files")
+    }
+
+    # Find the maximum thermalization across all ranks
+    max_therm_hmc <- max(sapply(results, function(r) r$thermalization_hmc_step))
+    max_therm_file <- names(results)[which.max(sapply(results, function(r) r$thermalization_hmc_step))]
+
+    message(sprintf("\n=== Acceptance Thermalization Summary ==="))
+    message(sprintf("Analyzed %d file(s):", length(results)))
+    for (fname in names(results)) {
+        res <- results[[fname]]
+        message(sprintf(
+            "  %s: thermalization at HMC step %d",
+            fname, res$thermalization_hmc_step
+        ))
+    }
+    message(sprintf(
+        "Maximum thermalization: %d HMC steps (from %s)",
+        max_therm_hmc, max_therm_file
+    ))
+    message(sprintf("Plaquette thermalization: %d HMC steps", plaquette_skip))
+
+    # Determine final recommendation
+    # Manual skip_steps always wins
+    # Otherwise: use max of plaquette and acceptance
+    final_recommendation <- if (was_manual) {
+        message(sprintf("Using manual skip_steps: %d HMC steps (overrides all estimates)", skip_steps))
+        skip_steps
+    } else if (max_therm_hmc > plaquette_skip) {
+        message(sprintf(
+            "Acceptance thermalization (%d) > plaquette (%d)",
+            max_therm_hmc, plaquette_skip
+        ))
+        message(sprintf("Updating recommended_skip.txt to %d HMC steps", max_therm_hmc))
+        max_therm_hmc
+    } else {
+        message(sprintf(
+            "Plaquette thermalization (%d) >= acceptance (%d)",
+            plaquette_skip, max_therm_hmc
+        ))
+        message(sprintf("Keeping recommended_skip.txt at %d HMC steps", plaquette_skip))
+        plaquette_skip
+    }
+
+    # Update recommended_skip.txt if needed (and not manual)
+    if (!was_manual && final_recommendation > plaquette_skip) {
+        writeLines(as.character(final_recommendation), plaquette_skip_file)
+        message("Updated recommended_skip.txt")
+    }
+
+    # Write combined summary
+    combined_summary <- file.path(directory, "acceptance_summary_combined.txt")
+    cat("Combined Acceptance Analysis Summary\n", file = combined_summary)
+    cat("====================================\n\n", file = combined_summary, append = TRUE)
+    cat(sprintf("Number of log files analyzed: %d\n\n", length(results)), file = combined_summary, append = TRUE)
+
+    cat("Individual file results:\n", file = combined_summary, append = TRUE)
+    for (fname in names(results)) {
+        res <- results[[fname]]
+        cat(sprintf("\n%s:\n", fname), file = combined_summary, append = TRUE)
+        cat(
+            sprintf(
+                "  Thermalization: measurement %d, HMC step %d\n",
+                res$thermalization_idx, res$thermalization_hmc_step
+            ),
+            file = combined_summary, append = TRUE
+        )
+        cat(
+            sprintf(
+                "  Mean acceptance: %.6f +/- %.6f\n",
+                res$mean_acceptance, res$error_acceptance
+            ),
+            file = combined_summary, append = TRUE
+        )
+        if (!is.na(res$tau_int)) {
+            cat(sprintf("  Tau_int: %.2f +/- %.2f\n", res$tau_int, res$tau_error),
+                file = combined_summary, append = TRUE
+            )
+        }
+    }
+
+    cat(sprintf("\n--- Final Recommendation ---\n"), file = combined_summary, append = TRUE)
+    cat(sprintf(
+        "Maximum acceptance thermalization: %d HMC steps (from %s)\n",
+        max_therm_hmc, max_therm_file
+    ), file = combined_summary, append = TRUE)
+    cat(sprintf("Plaquette thermalization: %d HMC steps\n", plaquette_skip),
+        file = combined_summary, append = TRUE
+    )
+    cat(sprintf("Final recommended skip: %d HMC steps\n", final_recommendation),
+        file = combined_summary, append = TRUE
+    )
+    if (was_manual) {
+        cat("(Manual skip_steps provided - overrides estimates)\n",
+            file = combined_summary, append = TRUE
+        )
+    } else if (final_recommendation > plaquette_skip) {
+        cat("(Acceptance estimate used - higher than plaquette)\n",
+            file = combined_summary, append = TRUE
+        )
+    } else {
+        cat("(Plaquette estimate used - higher than or equal to acceptance)\n",
+            file = combined_summary, append = TRUE
+        )
+    }
+
+    message(sprintf("Acceptance analysis complete. Results saved to %s", directory))
+
+    # Return the final recommendation
+    return(invisible(list(
+        final_recommendation = final_recommendation,
+        max_acceptance_therm = max_therm_hmc,
+        plaquette_therm = plaquette_skip,
+        all_results = results
     )))
 }
 
 # Main execution
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 1 || length(args) > 2) {
-    stop("Usage: Rscript analysis_acceptance.R <directory> [skip_steps]")
+if (length(args) < 1 || length(args) > 3) {
+    stop("Usage: Rscript analysis_acceptance.R <directory> [skip_steps] [was_manual]")
 }
 directory <- args[1]
 assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+
+# Check if skip_steps was manually provided (vs. from plaquette analysis)
 skip_steps <- if (length(args) >= 2) as.integer(args[2]) else 0
-result <- analyze_acceptance(directory, skip_steps = skip_steps)
-cat(sprintf("Recommended skip steps: %d\n", result$recommended_skip))
-cat(sprintf("Mean acceptance: %.4f +/- %.4f\n", result$mean_acceptance, result$error_acceptance))
+was_manual <- if (length(args) >= 3) as.logical(args[3]) else FALSE
+
+result <- analyze_acceptance(directory, skip_steps = skip_steps, was_manual = was_manual)
+cat(sprintf("\n=== Final Results ===\n"))
+cat(sprintf("Final recommended skip steps: %d HMC steps\n", result$final_recommendation))
+cat(sprintf("  - Max acceptance thermalization: %d HMC steps\n", result$max_acceptance_therm))
+cat(sprintf("  - Plaquette thermalization: %d HMC steps\n", result$plaquette_therm))

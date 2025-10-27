@@ -93,12 +93,41 @@ def analyze_directory(directory, skip_steps=None):
     else:
         print(f"\n*** Using manually specified skip_steps: {skip_steps} ***\n")
     
-    # --- Step 3: Dispatch Remaining R Analyses ---
+    # --- Step 3: Run Acceptance Analysis (may update skip_steps) ---
     print("\n" + "="*60)
-    print(f"STEP 2: Running remaining analyses with skip_steps={skip_steps}")
+    print(f"STEP 2: Running acceptance analysis with skip_steps={skip_steps}")
+    print("="*60 + "\n")
+    
+    # Determine if skip_steps was manually provided
+    was_manual_skip = skip_steps is not None and len(sys.argv) == 3
+    acceptance_cmd = ["Rscript", "analysis_acceptance.R", directory, str(skip_steps), 
+                     "TRUE" if was_manual_skip else "FALSE"]
+    
+    try:
+        print(f"Running: {' '.join(acceptance_cmd)}")
+        subprocess.run(acceptance_cmd, check=True, env=env)
+        print("Acceptance analysis completed successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error: Acceptance analysis failed with exit code {e.returncode}")
+        print("Continuing with other analyses...")
+    except FileNotFoundError:
+        print("Error: Rscript not found. Ensure R is installed and available in PATH.")
+    
+    # Re-read recommended_skip.txt in case acceptance updated it
+    if not was_manual_skip:
+        recommended_skip_file = os.path.join(directory, "recommended_skip.txt")
+        if os.path.exists(recommended_skip_file):
+            with open(recommended_skip_file, 'r') as f:
+                updated_skip = int(f.read().strip())
+            if updated_skip != skip_steps:
+                print(f"\n*** Acceptance analysis updated skip_steps: {skip_steps} -> {updated_skip} ***\n")
+                skip_steps = updated_skip
+    
+    # --- Step 4: Dispatch Remaining R Analyses ---
+    print("\n" + "="*60)
+    print(f"STEP 3: Running remaining analyses with skip_steps={skip_steps}")
     print("="*60 + "\n")
     r_scripts = [
-        ["Rscript", "analysis_acceptance.R", directory, str(skip_steps)],
         ["Rscript", "analysis_SimulationLoggingParams_log_file.R", directory, str(skip_steps)],
         ["Rscript", "analysis_wilsonflow_tests.R", directory, str(skip_steps)],
         # ["Rscript", "analysis_wilsonflow_improv.R", directory, str(skip_steps)],
