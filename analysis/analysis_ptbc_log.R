@@ -211,6 +211,52 @@ analyze_delta_h_by_defect_distance <- function(directory, swap_df, num_bins = 30
   return(NULL)
 }
 
+# Function to plot defect values per rank over HMC steps
+plot_defects_by_rank <- function(directory, data) {
+  if (nrow(data) == 0) {
+    write_log("Defect by rank plotting skipped: no data.")
+    return(NULL)
+  }
+
+  # Extract defects matrix: each row is a step, each column is a rank
+  defects_matrix <- do.call(rbind, data$defects)
+  num_ranks <- ncol(defects_matrix)
+
+  # Convert to long format for ggplot
+  plot_data <- data.frame(
+    step = rep(data$step, each = num_ranks),
+    rank = rep(0:(num_ranks - 1), times = nrow(data)),
+    defect = as.vector(t(defects_matrix))
+  )
+
+  # Create output PDF file
+  output_path <- file.path(directory, "defects_by_rank.pdf")
+  pdf(output_path, width = 10, height = 6)
+
+  # Create one plot per rank
+  for (r in 0:(num_ranks - 1)) {
+    rank_data <- plot_data %>% filter(rank == r)
+
+    p <- ggplot(rank_data, aes(x = step, y = defect)) +
+      geom_line(color = "steelblue", linewidth = 0.5) +
+      # geom_point(size = 1.5, alpha = 0.6) +
+      labs(
+        title = paste("Defect Value vs HMC Step for Rank", r),
+        x = "HMC Step",
+        y = "Defect Value"
+      ) +
+      ylim(0, 1) +
+      theme_minimal()
+
+    print(p)
+  }
+
+  dev.off()
+  write_log(paste("Defects by rank plots saved to", output_path))
+
+  return(NULL)
+}
+
 # Main analysis function for PTBC log
 analyze_ptbc_log <- function(directory, skip_initial = 0) {
   write_log(paste("Starting PTBC log analysis for directory:", directory))
@@ -230,6 +276,9 @@ analyze_ptbc_log <- function(directory, skip_initial = 0) {
     write_log("Acceptance analysis results:")
     write_log(paste(capture.output(print(acceptance_results)), collapse = "\n"))
   }
+
+  # Plot defect evolution by rank
+  plot_defects_by_rank(directory, ptbc_data)
 
   # Track defects
   defect_swap_results <- track_defect_swaps(directory, ptbc_data)
