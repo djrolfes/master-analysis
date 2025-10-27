@@ -159,7 +159,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
     return(list(timeseries = timeseries_plot, autocorr = NULL))
   }
 
-  ac_data <- data$topo[skip_initial < data$step]
+  ac_data <- data$topo[data$step > skip_initial]
   ac_data <- as.numeric(ac_data)
   ac_data <- ac_data[!is.na(ac_data)]
 
@@ -227,7 +227,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
     boot_tau <- boot_original$Tauint[max_idx]
     # Propagate error: Tauint = Error^2 / (error.naive^2 * 2)
     # dTauint/dError = 2*Error / (error.naive^2 * 2) = Error / error.naive^2
-    error_naive <- sd(data$topo[(skip_initial + 1):nrow(data)]) / sqrt(length(ac_data))
+    error_naive <- sd(ac_data) / sqrt(length(ac_data))
     boot_dtau <- 2 * boot_original$Error[max_idx] * boot_original$DError[max_idx] / (error_naive^2)
   }
 
