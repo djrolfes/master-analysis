@@ -85,52 +85,71 @@ compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 200) {
   return(list(data = avg_dist, plot = avg_dist_plot))
 }
 
-analyze_w_derivative <- function(directory, skip_steps = 200, n_boot = 200, target_w = 0.1) {
-  write_log(paste0("analyze_w_derivative: start for directory=", directory, " target_w=", target_w))
+analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot = 200, target_ad_ft2 = 0.1, target_w = 0.1) {
+  write_log(paste0("analyze_combined_action_density: start for directory=", directory))
   # Read action density data using data_io.R convention
   action_density_collection <- read_action_densities(directory)
 
-  write_log(paste0("analyze_w_derivative: found ", length(action_density_collection), " collections"))
+  write_log(paste0("analyze_combined_action_density: found ", length(action_density_collection), " collections"))
   print(summary(action_density_collection))
 
   # Loop over each element in the collection and perform analysis
   results_list <- lapply(names(action_density_collection), function(name) {
-    write_log(paste0("analyze_w_derivative: processing ", name))
+    write_log(paste0("analyze_combined_action_density: processing ", name))
     action_density_data <- action_density_collection[[name]]
     # Skip initial thermalization steps if requested
     if (skip_steps > 0) {
       action_density_data <- action_density_data %>% filter(hmc_step > skip_steps)
     }
 
-    write_log(paste0("analyze_w_derivative: rows after skip for ", name, " = ", nrow(action_density_data)))
+    write_log(paste0("analyze_combined_action_density: rows after skip for ", name, " = ", nrow(action_density_data)))
 
-    # For each HMC step, compute W(t) = t * d/dt(t^2 <E(t)>) using central differences
+    # ===== ANALYSIS 1: Bootstrap analysis for action density =====
+    results <- action_density_data %>%
+      pivot_longer(-hmc_step, names_to = "flow_time", values_to = "action_density") %>%
+      group_by(flow_time) %>%
+      summarise(
+        mean = mean(action_density),
+        error = hadron::bootstrap.meanerror(action_density, n_boot)
+      )
+
+    results <- results %>%
+      mutate(flow_time_num = as.numeric(gsub("^X", "", flow_time)))
+
+    # ===== ANALYSIS 2: Bootstrap analysis for t^2 * E(t) =====
+    boot_results <- action_density_data %>%
+      pivot_longer(-hmc_step, names_to = "flow_time", values_to = "action_density") %>%
+      mutate(
+        flow_time_num = as.numeric(gsub("^X", "", flow_time)),
+        ad_ft2 = action_density * flow_time_num**2
+      ) %>%
+      group_by(flow_time) %>%
+      summarise(
+        mean_ad_ft2 = mean(ad_ft2),
+        error_ad_ft2 = hadron::bootstrap.meanerror(ad_ft2, n_boot)
+      ) %>%
+      mutate(flow_time_num = as.numeric(gsub("^X", "", flow_time)))
+
+    # ===== ANALYSIS 3: W(t) = t * d/dt(t^2 <E(t)>) using central differences =====
     # Using product rule: W(t) = 2t^2 <E(t)> + t^3 * d<E(t)>/dt
-
-    # Convert to long format for easier manipulation
     data_long <- action_density_data %>%
       pivot_longer(-hmc_step, names_to = "flow_time", values_to = "action_density") %>%
       mutate(flow_time_num = as.numeric(gsub("^X", "", flow_time))) %>%
       arrange(hmc_step, flow_time_num)
 
-    # For each HMC step, compute W(t) at each flow time
     w_data <- data_long %>%
       group_by(hmc_step) %>%
       arrange(flow_time_num) %>%
       mutate(
-        # Central finite difference: d<E>/dt ≈ (<E>_{i+1} - <E>_{i-1}) / (t_{i+1} - t_{i-1})
-        # Use forward/backward differences at boundaries
         dE_dt = case_when(
           row_number() == 1 ~ (lead(action_density, 1) - action_density) / (lead(flow_time_num, 1) - flow_time_num),
           row_number() == n() ~ (action_density - lag(action_density, 1)) / (flow_time_num - lag(flow_time_num, 1)),
           TRUE ~ (lead(action_density, 1) - lag(action_density, 1)) / (lead(flow_time_num, 1) - lag(flow_time_num, 1))
         ),
-        # W(t) = 2t^2 <E(t)> + t^3 * d<E(t)>/dt
         w_t = 2 * flow_time_num^2 * action_density + flow_time_num^3 * dE_dt
       ) %>%
       ungroup()
 
-    # Bootstrap analysis for W(t) at each flow time
     w_results <- w_data %>%
       group_by(flow_time_num) %>%
       summarise(
@@ -139,13 +158,72 @@ analyze_w_derivative <- function(directory, skip_steps = 200, n_boot = 200, targ
         .groups = "drop"
       )
 
-    write_log(paste0("analyze_w_derivative: computed W(t) for ", nrow(w_results), " flow times"))
+    write_log(paste0("analyze_combined_action_density: computed all analyses for ", nrow(w_results), " flow times"))
 
-    # Find flow time where W(t) crosses target value
-    target_reached <- any(w_results$mean_w >= target_w, na.rm = TRUE)
-    target_info <- NULL
+    # ===== Find crossing points for t^2 * E(t) =====
+    target_ad_ft2_reached <- any(boot_results$mean_ad_ft2 >= target_ad_ft2)
+    target_ad_ft2_info <- NULL
 
-    if (target_reached) {
+    if (target_ad_ft2_reached) {
+      below_target <- boot_results %>% filter(mean_ad_ft2 < target_ad_ft2)
+      above_target <- boot_results %>% filter(mean_ad_ft2 >= target_ad_ft2)
+
+      if (nrow(below_target) > 0 && nrow(above_target) > 0) {
+        pt_below <- below_target %>% slice_tail(n = 1)
+        pt_above <- above_target %>% slice_head(n = 1)
+
+        t0 <- pt_below$flow_time_num
+        t1 <- pt_above$flow_time_num
+        y0 <- pt_below$mean_ad_ft2
+        y1 <- pt_above$mean_ad_ft2
+
+        flow_time_at_target <- t0 + (target_ad_ft2 - y0) * (t1 - t0) / (y1 - y0)
+
+        err0 <- pt_below$error_ad_ft2
+        err1 <- pt_above$error_ad_ft2
+        error_y_at_target <- err0 + (target_ad_ft2 - y0) * (err1 - err0) / (y1 - y0)
+
+        slope <- (y1 - y0) / (t1 - t0)
+        error_at_target <- error_y_at_target / abs(slope)
+
+        target_ad_ft2_info <- list(
+          flow_time = flow_time_at_target,
+          error = error_at_target,
+          value = target_ad_ft2
+        )
+
+        write_log(paste0(
+          "analyze_combined_action_density: target t^2*E=", target_ad_ft2, " reached at flow_time = ",
+          round(flow_time_at_target, 4), " ± ", round(error_at_target, 4)
+        ))
+      } else if (nrow(above_target) > 0) {
+        pt <- above_target %>% slice_head(n = 1)
+        if (nrow(above_target) > 1) {
+          pt_next <- above_target %>% slice(2)
+          slope <- (pt_next$mean_ad_ft2 - pt$mean_ad_ft2) / (pt_next$flow_time_num - pt$flow_time_num)
+          error_at_target <- pt$error_ad_ft2 / abs(slope)
+        } else {
+          error_at_target <- 0
+        }
+
+        target_ad_ft2_info <- list(
+          flow_time = pt$flow_time_num,
+          error = error_at_target,
+          value = pt$mean_ad_ft2
+        )
+        write_log(paste0(
+          "analyze_combined_action_density: target t^2*E=", target_ad_ft2, " reached at first point"
+        ))
+      }
+    } else {
+      write_log(paste0("analyze_combined_action_density: target t^2*E=", target_ad_ft2, " not reached"))
+    }
+
+    # ===== Find crossing points for W(t) =====
+    target_w_reached <- any(w_results$mean_w >= target_w, na.rm = TRUE)
+    target_w_info <- NULL
+
+    if (target_w_reached) {
       below_target <- w_results %>% filter(mean_w < target_w)
       above_target <- w_results %>% filter(mean_w >= target_w)
 
@@ -167,16 +245,15 @@ analyze_w_derivative <- function(directory, skip_steps = 200, n_boot = 200, targ
         slope <- (y1 - y0) / (t1 - t0)
         error_at_target <- error_y_at_target / abs(slope)
 
-        target_info <- list(
+        target_w_info <- list(
           flow_time = flow_time_at_target,
           error = error_at_target,
           value = target_w
         )
 
         write_log(paste0(
-          "analyze_w_derivative: target W=", target_w, " reached at flow_time = ",
-          round(flow_time_at_target, 4), " ± ", round(error_at_target, 4),
-          " (slope=", round(slope, 6), ", Δy=", round(error_y_at_target, 6), ")"
+          "analyze_combined_action_density: target W=", target_w, " reached at flow_time = ",
+          round(flow_time_at_target, 4), " ± ", round(error_at_target, 4)
         ))
       } else if (nrow(above_target) > 0) {
         pt <- above_target %>% slice_head(n = 1)
@@ -188,72 +265,219 @@ analyze_w_derivative <- function(directory, skip_steps = 200, n_boot = 200, targ
           error_at_target <- 0
         }
 
-        target_info <- list(
+        target_w_info <- list(
           flow_time = pt$flow_time_num,
           error = error_at_target,
           value = pt$mean_w
         )
         write_log(paste0(
-          "analyze_w_derivative: target W=", target_w, " reached at first point: flow_time = ",
-          round(pt$flow_time_num, 4), " ± ", round(error_at_target, 4)
+          "analyze_combined_action_density: target W=", target_w, " reached at first point"
         ))
       }
     } else {
-      write_log(paste0("analyze_w_derivative: target W=", target_w, " not reached in data"))
+      write_log(paste0("analyze_combined_action_density: target W=", target_w, " not reached"))
     }
 
-    # Create plot
-    plot_title <- paste("W(t) = t * d/dt(t² <E(t)>):", name)
+    # ===== Find intersection of t^2*E and W curves =====
+    intersection_info <- NULL
+    # Merge the two datasets
+    combined_data <- inner_join(
+      boot_results %>% select(flow_time_num, mean_ad_ft2),
+      w_results %>% select(flow_time_num, mean_w),
+      by = "flow_time_num"
+    )
+
+    # Find where they cross (where sign of difference changes)
+    combined_data <- combined_data %>%
+      mutate(diff = mean_ad_ft2 - mean_w)
+
+    # Look for all sign changes and keep the largest flow_time
+    all_intersections <- list()
+    for (i in 2:nrow(combined_data)) {
+      if (sign(combined_data$diff[i - 1]) != sign(combined_data$diff[i])) {
+        # Found a crossing
+        t0 <- combined_data$flow_time_num[i - 1]
+        t1 <- combined_data$flow_time_num[i]
+        y0_ad <- combined_data$mean_ad_ft2[i - 1]
+        y1_ad <- combined_data$mean_ad_ft2[i]
+        y0_w <- combined_data$mean_w[i - 1]
+        y1_w <- combined_data$mean_w[i]
+
+        # Linear interpolation to find crossing point
+        # At crossing: y_ad = y_w, so find t where (y0_ad + slope_ad*(t-t0)) = (y0_w + slope_w*(t-t0))
+        slope_ad <- (y1_ad - y0_ad) / (t1 - t0)
+        slope_w <- (y1_w - y0_w) / (t1 - t0)
+
+        if (abs(slope_ad - slope_w) > 1e-10) {
+          t_intersect <- t0 + (y0_w - y0_ad) / (slope_ad - slope_w)
+          y_intersect <- y0_ad + slope_ad * (t_intersect - t0)
+
+          all_intersections <- c(all_intersections, list(list(
+            flow_time = t_intersect,
+            value = y_intersect
+          )))
+        }
+      }
+    }
+
+    # Use the intersection with the largest flow_time
+    if (length(all_intersections) > 0) {
+      # Find the intersection with maximum flow_time
+      max_idx <- which.max(sapply(all_intersections, function(x) x$flow_time))
+      intersection_info <- all_intersections[[max_idx]]
+
+      write_log(paste0(
+        "analyze_combined_action_density: found ", length(all_intersections), " intersections, using largest at flow_time = ",
+        round(intersection_info$flow_time, 4), ", value = ", round(intersection_info$value, 6)
+      ))
+    } else {
+      write_log("analyze_combined_action_density: no intersection found between t^2*E and W curves")
+    }
+
+    # ===== CREATE PLOTS =====
+
+    # Plot 1: Action Density
+    action_density_plot <- ggplot(results, aes(x = flow_time_num, y = mean)) +
+      geom_line() +
+      geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
+      labs(
+        title = paste("Action Density <E(t)>:", name),
+        x = "Wilson Flow Time",
+        y = "Mean Action Density ± Error"
+      ) +
+      theme_minimal()
+
+    # Plot 2: t^2 * E(t) with target
+    plot_title_ad_ft2 <- paste("t² × <E(t)>:", name)
+    ad_ft2_plot <- ggplot(boot_results, aes(x = flow_time_num, y = mean_ad_ft2)) +
+      geom_line(color = "darkred") +
+      geom_ribbon(aes(ymin = mean_ad_ft2 - error_ad_ft2, ymax = mean_ad_ft2 + error_ad_ft2), fill = "red", alpha = 0.2)
+
+    if (!is.null(target_ad_ft2_info)) {
+      ad_ft2_plot <- ad_ft2_plot +
+        geom_hline(yintercept = target_ad_ft2, linetype = "dashed", color = "blue", linewidth = 0.8) +
+        geom_vline(xintercept = target_ad_ft2_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.8) +
+        annotate("point", x = target_ad_ft2_info$flow_time, y = target_ad_ft2, color = "blue", size = 2) +
+        annotate("errorbar",
+          y = target_ad_ft2, xmin = target_ad_ft2_info$flow_time - target_ad_ft2_info$error,
+          xmax = target_ad_ft2_info$flow_time + target_ad_ft2_info$error,
+          orientation = "y", color = "blue", width = target_ad_ft2 * 0.1, linewidth = 0.8
+        )
+      plot_title_ad_ft2 <- paste0(plot_title_ad_ft2, sprintf(
+        "\nt0(t^2*E=%.3f) = %.4f +/- %.4f",
+        target_ad_ft2, target_ad_ft2_info$flow_time, target_ad_ft2_info$error
+      ))
+    } else {
+      plot_title_ad_ft2 <- paste0(plot_title_ad_ft2, sprintf("\n(Target t^2*E=%.3f not reached)", target_ad_ft2))
+    }
+
+    ad_ft2_plot <- ad_ft2_plot +
+      labs(
+        title = plot_title_ad_ft2,
+        x = "Wilson Flow Time",
+        y = "t² × <E(t)> ± Error"
+      ) +
+      theme_minimal()
+
+    # Plot 3: W(t) with target
+    plot_title_w <- paste("W(t) = t × d/dt(t² <E(t)>):", name)
     w_plot <- ggplot(w_results, aes(x = flow_time_num, y = mean_w)) +
       geom_line(color = "darkgreen") +
       geom_ribbon(aes(ymin = mean_w - error_w, ymax = mean_w + error_w), fill = "green", alpha = 0.2)
 
-    # Add target value indicator if reached
-    if (!is.null(target_info)) {
+    if (!is.null(target_w_info)) {
       w_plot <- w_plot +
         geom_hline(yintercept = target_w, linetype = "dashed", color = "blue", linewidth = 0.8) +
-        geom_vline(xintercept = target_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.8) +
-        annotate("point", x = target_info$flow_time, y = target_w, color = "blue", size = 3) +
+        geom_vline(xintercept = target_w_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.8) +
+        annotate("point", x = target_w_info$flow_time, y = target_w, color = "blue", size = 2) +
         annotate("errorbar",
-          y = target_w, xmin = target_info$flow_time - target_info$error,
-          xmax = target_info$flow_time + target_info$error,
+          y = target_w, xmin = target_w_info$flow_time - target_w_info$error,
+          xmax = target_w_info$flow_time + target_w_info$error,
           orientation = "y", color = "blue", width = target_w * 0.1, linewidth = 0.8
         )
-
-      plot_title <- paste0(plot_title, sprintf(
+      plot_title_w <- paste0(plot_title_w, sprintf(
         "\nt0(W=%.3f) = %.4f +/- %.4f",
-        target_w, target_info$flow_time, target_info$error
+        target_w, target_w_info$flow_time, target_w_info$error
       ))
     } else {
-      plot_title <- paste0(plot_title, sprintf("\n(Target W=%.3f not reached)", target_w))
+      plot_title_w <- paste0(plot_title_w, sprintf("\n(Target W=%.3f not reached)", target_w))
     }
 
     w_plot <- w_plot +
       labs(
-        title = plot_title,
+        title = plot_title_w,
         x = "Wilson Flow Time",
         y = "W(t) ± Error"
       ) +
       theme_minimal()
 
-    # Save plot
-    out_pdf <- file.path(directory, paste0("w_derivative_", sub("\\.txt$", "", name), ".pdf"))
-    write_log(paste0("analyze_w_derivative: saving PDF to ", out_pdf))
+    # Plot 4: Overlay of t^2*E and W with intersection
+    plot_title_overlay <- paste("Overlay: t² <E(t)> and W(t):", name)
+    overlay_plot <- ggplot() +
+      geom_line(data = boot_results, aes(x = flow_time_num, y = mean_ad_ft2, color = "t² × E(t)"), linewidth = 1) +
+      geom_ribbon(data = boot_results, aes(
+        x = flow_time_num, ymin = mean_ad_ft2 - error_ad_ft2,
+        ymax = mean_ad_ft2 + error_ad_ft2
+      ), fill = "red", alpha = 0.1) +
+      geom_line(data = w_results, aes(x = flow_time_num, y = mean_w, color = "W(t)"), linewidth = 1) +
+      geom_ribbon(data = w_results, aes(
+        x = flow_time_num, ymin = mean_w - error_w,
+        ymax = mean_w + error_w
+      ), fill = "green", alpha = 0.1) +
+      scale_color_manual(values = c("t² × E(t)" = "darkred", "W(t)" = "darkgreen"))
+
+    if (!is.null(intersection_info)) {
+      overlay_plot <- overlay_plot +
+        geom_vline(xintercept = intersection_info$flow_time, linetype = "dashed", color = "purple", linewidth = 0.8) +
+        annotate("point",
+          x = intersection_info$flow_time, y = intersection_info$value,
+          color = "purple", size = 3, shape = 18
+        )
+      plot_title_overlay <- paste0(plot_title_overlay, sprintf(
+        "\nIntersection at t = %.4f",
+        intersection_info$flow_time
+      ))
+    }
+
+    overlay_plot <- overlay_plot +
+      labs(
+        title = plot_title_overlay,
+        x = "Wilson Flow Time",
+        y = "Value",
+        color = "Observable"
+      ) +
+      theme_minimal() +
+      theme(legend.position = "bottom")
+
+    # Save all 4 plots to a single PDF
+    out_pdf <- file.path(directory, paste0("combined_analysis_", sub("\\.txt$", "", name), ".pdf"))
+    write_log(paste0("analyze_combined_action_density: saving PDF to ", out_pdf))
     tryCatch(
       {
-        pdf(out_pdf, width = 8, height = 6)
+        pdf(out_pdf, width = 10, height = 12)
+        print(ad_ft2_plot)
         print(w_plot)
+        print(overlay_plot)
+        print(action_density_plot)
         dev.off()
-        write_log(paste0("analyze_w_derivative: successfully saved ", out_pdf))
+        write_log(paste0("analyze_combined_action_density: successfully saved ", out_pdf))
       },
       error = function(e) {
-        write_log(paste0("analyze_w_derivative: ERROR saving PDF for ", name, ": ", conditionMessage(e)))
+        write_log(paste0("analyze_combined_action_density: ERROR saving PDF for ", name, ": ", conditionMessage(e)))
       }
     )
 
-    return(list(data = w_results, plot = w_plot, name = name, target_info = target_info))
+    return(list(
+      action_density_data = results,
+      ad_ft2_data = boot_results,
+      w_data = w_results,
+      target_ad_ft2_info = target_ad_ft2_info,
+      target_w_info = target_w_info,
+      intersection_info = intersection_info,
+      name = name
+    ))
   })
-  write_log("analyze_w_derivative: completed all collections")
+  write_log("analyze_combined_action_density: completed all collections")
   return(results_list)
 }
 
@@ -544,10 +768,12 @@ analyze_wilsonflow <- function(directory, skip_steps = 200, target_ad_ft2 = 0.1,
         }
       )
 
-      action_density_result <- analyze_action_density(directory, skip_steps = skip_steps, target_ad_ft2 = target_ad_ft2)
-
-      # Analyze W(t) = t * d/dt(t^2 <E(t)>)
-      w_derivative_result <- analyze_w_derivative(directory, skip_steps = skip_steps, target_w = target_w)
+      # Combined analysis of action density, t^2*E, and W(t)
+      combined_result <- analyze_combined_action_density(directory,
+        skip_steps = skip_steps,
+        n_boot = 200, target_ad_ft2 = target_ad_ft2,
+        target_w = target_w
+      )
 
       write_log("analyze_wilsonflow: completed successfully")
     },
