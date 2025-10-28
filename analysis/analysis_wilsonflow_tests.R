@@ -28,7 +28,8 @@ bootstrap_analysis <- function(data, n_boot = 200) {
     )
 
   write_log("bootstrap_analysis: completed aggregation")
-  ggplot(results, aes(x = as.numeric(flow_time), y = mean)) +
+  # Note: make.names() prepends "X" to numeric column names, so we need to remove it
+  ggplot(results, aes(x = as.numeric(gsub("^X", "", flow_time)), y = mean)) +
     geom_line() +
     geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
     labs(title = "Bootstrap Analysis of Wilson Flow Observable", x = "Wilson Flow Time", y = "Mean Observable") +
@@ -37,9 +38,10 @@ bootstrap_analysis <- function(data, n_boot = 200) {
 
 plot_heatmap <- function(data) {
   write_log("plot_heatmap: start")
+  # Note: make.names() prepends "X" to numeric column names, so we need to remove it
   data_long <- data %>%
     pivot_longer(-hmc_step, names_to = "flow_time", values_to = "observable") %>%
-    mutate(flow_time = as.numeric(flow_time))
+    mutate(flow_time = as.numeric(gsub("^X", "", flow_time)))
 
   p <- ggplot(data_long, aes(x = flow_time, y = hmc_step, fill = observable)) +
     geom_tile() +
@@ -69,7 +71,8 @@ compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 200) {
     )
   write_log("compute_avg_dist_to_integer: completed aggregation")
   print(head(avg_dist))
-  avg_dist_plot <- ggplot(avg_dist, aes(x = as.numeric(flow_time), y = mean)) +
+  # Note: make.names() prepends "X" to numeric column names, so we need to remove it
+  avg_dist_plot <- ggplot(avg_dist, aes(x = as.numeric(gsub("^X", "", flow_time)), y = mean)) +
     geom_line() +
     geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
     labs(
@@ -82,8 +85,8 @@ compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 200) {
   return(list(data = avg_dist, plot = avg_dist_plot))
 }
 
-analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
-  write_log(paste0("analyze_action_density: start for directory=", directory))
+analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200, target_ad_ft2 = 0.1) {
+  write_log(paste0("analyze_action_density: start for directory=", directory, " target_ad_ft2=", target_ad_ft2))
   # Read action density data using data_io.R convention
   action_density_collection <- read_action_densities(directory)
 
@@ -111,16 +114,18 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
       )
 
     # Compute mean and error for action_density * flow_time^2 using bootstrap
+    # Note: make.names() prepends "X" to numeric column names, so we need to remove it
     results <- results %>%
       mutate(
-        flow_time_num = as.numeric(flow_time)
+        flow_time_num = as.numeric(gsub("^X", "", flow_time))
       )
 
     # For bootstrap, need to resample action_density * flow_time^2
+    # Note: make.names() prepends "X" to numeric column names, so we need to remove it
     boot_results <- action_density_data %>%
       pivot_longer(-hmc_step, names_to = "flow_time", values_to = "action_density") %>%
       mutate(
-        flow_time_num = as.numeric(flow_time),
+        flow_time_num = as.numeric(gsub("^X", "", flow_time)),
         ad_ft2 = action_density * flow_time_num**2
       ) %>%
       group_by(flow_time) %>%
@@ -128,6 +133,82 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
         mean_ad_ft2 = mean(ad_ft2),
         error_ad_ft2 = hadron::bootstrap.meanerror(ad_ft2, n_boot)
       )
+
+    # Find flow time where ad_ft2 crosses target value (e.g., 0.1)
+    boot_results_num <- boot_results %>%
+      mutate(flow_time_num = as.numeric(gsub("^X", "", flow_time)))
+
+    # Check if target value is reached
+    target_reached <- any(boot_results_num$mean_ad_ft2 >= target_ad_ft2)
+    target_info <- NULL
+
+    if (target_reached) {
+      # Find the crossing point by linear interpolation
+      # Find the two points that bracket the target
+      below_target <- boot_results_num %>% filter(mean_ad_ft2 < target_ad_ft2)
+      above_target <- boot_results_num %>% filter(mean_ad_ft2 >= target_ad_ft2)
+
+      if (nrow(below_target) > 0 && nrow(above_target) > 0) {
+        # Get the last point below and first point above
+        pt_below <- below_target %>% slice_tail(n = 1)
+        pt_above <- above_target %>% slice_head(n = 1)
+
+        # Linear interpolation for flow time
+        t0 <- pt_below$flow_time_num
+        t1 <- pt_above$flow_time_num
+        y0 <- pt_below$mean_ad_ft2
+        y1 <- pt_above$mean_ad_ft2
+
+        flow_time_at_target <- t0 + (target_ad_ft2 - y0) * (t1 - t0) / (y1 - y0)
+
+        # Error propagation: error on t from error on y
+        # At the crossing point, interpolate the error on y
+        err0 <- pt_below$error_ad_ft2
+        err1 <- pt_above$error_ad_ft2
+        error_y_at_target <- err0 + (target_ad_ft2 - y0) * (err1 - err0) / (y1 - y0)
+
+        # Slope at the crossing point (derivative dy/dt)
+        slope <- (y1 - y0) / (t1 - t0)
+
+        # Error on t from error on y: Δt = Δy / |slope|
+        error_at_target <- error_y_at_target / abs(slope)
+
+        target_info <- list(
+          flow_time = flow_time_at_target,
+          error = error_at_target,
+          value = target_ad_ft2
+        )
+
+        write_log(paste0(
+          "analyze_action_density: target ", target_ad_ft2, " reached at flow_time = ",
+          round(flow_time_at_target, 4), " ± ", round(error_at_target, 4),
+          " (slope=", round(slope, 6), ", Δy=", round(error_y_at_target, 6), ")"
+        ))
+      } else if (nrow(above_target) > 0) {
+        # Target is reached at first point
+        pt <- above_target %>% slice_head(n = 1)
+        # If we have a next point, estimate slope
+        if (nrow(above_target) > 1) {
+          pt_next <- above_target %>% slice(2)
+          slope <- (pt_next$mean_ad_ft2 - pt$mean_ad_ft2) / (pt_next$flow_time_num - pt$flow_time_num)
+          error_at_target <- pt$error_ad_ft2 / abs(slope)
+        } else {
+          error_at_target <- 0 # Cannot estimate without slope
+        }
+
+        target_info <- list(
+          flow_time = pt$flow_time_num,
+          error = error_at_target,
+          value = pt$mean_ad_ft2
+        )
+        write_log(paste0(
+          "analyze_action_density: target ", target_ad_ft2, " reached at first point: flow_time = ",
+          round(pt$flow_time_num, 4), " ± ", round(error_at_target, 4)
+        ))
+      }
+    } else {
+      write_log(paste0("analyze_action_density: target ", target_ad_ft2, " not reached in data"))
+    }
 
     # Plot mean and error vs flow time for action_density
     action_density_plot <- ggplot(results, aes(x = flow_time_num, y = mean)) +
@@ -142,11 +223,35 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200) {
       theme_minimal()
 
     # Plot mean and error vs flow time for action_density * flow_time^2
-    ad_ft2_plot <- ggplot(boot_results, aes(x = as.numeric(flow_time), y = mean_ad_ft2)) +
+    ad_ft2_plot <- ggplot(boot_results, aes(x = as.numeric(gsub("^X", "", flow_time)), y = mean_ad_ft2)) +
       geom_line(color = "darkred") +
-      geom_ribbon(aes(ymin = mean_ad_ft2 - error_ad_ft2, ymax = mean_ad_ft2 + error_ad_ft2), fill = "red", alpha = 0.2) +
+      geom_ribbon(aes(ymin = mean_ad_ft2 - error_ad_ft2, ymax = mean_ad_ft2 + error_ad_ft2), fill = "red", alpha = 0.2)
+
+    # Add target value indicator if it was reached
+    plot_title <- paste("Bootstrap Analysis of Action Density × flow_time²:", name)
+    if (!is.null(target_info)) {
+      # Add horizontal line at target value
+      ad_ft2_plot <- ad_ft2_plot +
+        geom_hline(yintercept = target_ad_ft2, linetype = "dashed", color = "blue", linewidth = 0.8) +
+        geom_vline(xintercept = target_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.8) +
+        annotate("point", x = target_info$flow_time, y = target_ad_ft2, color = "blue", size = 1) +
+        annotate("errorbar",
+          y = target_ad_ft2, xmin = target_info$flow_time - target_info$error,
+          xmax = target_info$flow_time + target_info$error,
+          orientation = "y", color = "blue", width = target_ad_ft2 * 0.1, linewidth = 0.8
+        )
+
+      plot_title <- paste0(plot_title, sprintf(
+        "\nt0(ad*t^2=%.3f) = %.4f +/- %.4f",
+        target_ad_ft2, target_info$flow_time, target_info$error
+      ))
+    } else {
+      plot_title <- paste0(plot_title, sprintf("\n(Target ad*t^2=%.3f not reached)", target_ad_ft2))
+    }
+
+    ad_ft2_plot <- ad_ft2_plot +
       labs(
-        title = paste("Bootstrap Analysis of Action Density × flow_time²:", name),
+        title = plot_title,
         x = "Wilson Flow Time",
         y = "Mean (Action Density × flow_time²) ± Error"
       ) +
@@ -196,9 +301,10 @@ plot_topological_charge_samples <- function(data, directory, n_samples = 400, sk
   }
 
   # Pivot to long format for plotting
+  # Note: make.names() prepends "X" to numeric column names, so we need to remove it
   data_long <- sampled_data %>%
     pivot_longer(-hmc_step, names_to = "flow_time", values_to = "topological_charge") %>%
-    mutate(flow_time = as.numeric(flow_time))
+    mutate(flow_time = as.numeric(gsub("^X", "", flow_time)))
 
   # Determine integer y-values for the dashed lines
   y_range <- range(data_long$topological_charge, na.rm = TRUE)
@@ -230,10 +336,10 @@ plot_topological_charge_samples <- function(data, directory, n_samples = 400, sk
   return(sample_plot)
 }
 
-analyze_wilsonflow <- function(directory, skip_steps = 200) {
+analyze_wilsonflow <- function(directory, skip_steps = 200, target_ad_ft2 = 0.1) {
   # set up logfile for this run
   assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
-  write_log(paste0("analyze_wilsonflow: start for directory=", directory, " skip_steps=", skip_steps))
+  write_log(paste0("analyze_wilsonflow: start for directory=", directory, " skip_steps=", skip_steps, " target_ad_ft2=", target_ad_ft2))
 
   # Wrap entire analysis in tryCatch so errors are logged
   tryCatch(
@@ -266,7 +372,7 @@ analyze_wilsonflow <- function(directory, skip_steps = 200) {
         }
       )
 
-      action_density_result <- analyze_action_density(directory, skip_steps = skip_steps)
+      action_density_result <- analyze_action_density(directory, skip_steps = skip_steps, target_ad_ft2 = target_ad_ft2)
 
       write_log("analyze_wilsonflow: completed successfully")
     },
@@ -287,10 +393,11 @@ analyze_wilsonflow <- function(directory, skip_steps = 200) {
 
 # Main execution
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) != 2) {
-  stop("Usage: Rscript analysis_wilsonflow_tests.R <directory> <skip_steps>")
+if (length(args) < 2 || length(args) > 3) {
+  stop("Usage: Rscript analysis_wilsonflow_tests.R <directory> <skip_steps> [target_ad_ft2]")
 }
 directory <- args[1]
 assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
-skip_steps <- args[2]
-analyze_wilsonflow(directory, skip_steps = as.integer(skip_steps))
+skip_steps <- as.integer(args[2])
+target_ad_ft2 <- if (length(args) == 3) as.numeric(args[3]) else 0.1
+analyze_wilsonflow(directory, skip_steps = skip_steps, target_ad_ft2 = target_ad_ft2)
