@@ -85,6 +85,178 @@ compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 200) {
   return(list(data = avg_dist, plot = avg_dist_plot))
 }
 
+analyze_w_derivative <- function(directory, skip_steps = 200, n_boot = 200, target_w = 0.1) {
+  write_log(paste0("analyze_w_derivative: start for directory=", directory, " target_w=", target_w))
+  # Read action density data using data_io.R convention
+  action_density_collection <- read_action_densities(directory)
+
+  write_log(paste0("analyze_w_derivative: found ", length(action_density_collection), " collections"))
+  print(summary(action_density_collection))
+
+  # Loop over each element in the collection and perform analysis
+  results_list <- lapply(names(action_density_collection), function(name) {
+    write_log(paste0("analyze_w_derivative: processing ", name))
+    action_density_data <- action_density_collection[[name]]
+    # Skip initial thermalization steps if requested
+    if (skip_steps > 0) {
+      action_density_data <- action_density_data %>% filter(hmc_step > skip_steps)
+    }
+
+    write_log(paste0("analyze_w_derivative: rows after skip for ", name, " = ", nrow(action_density_data)))
+
+    # For each HMC step, compute W(t) = t * d/dt(t^2 <E(t)>) using central differences
+    # Using product rule: W(t) = 2t^2 <E(t)> + t^3 * d<E(t)>/dt
+
+    # Convert to long format for easier manipulation
+    data_long <- action_density_data %>%
+      pivot_longer(-hmc_step, names_to = "flow_time", values_to = "action_density") %>%
+      mutate(flow_time_num = as.numeric(gsub("^X", "", flow_time))) %>%
+      arrange(hmc_step, flow_time_num)
+
+    # For each HMC step, compute W(t) at each flow time
+    w_data <- data_long %>%
+      group_by(hmc_step) %>%
+      arrange(flow_time_num) %>%
+      mutate(
+        # Central finite difference: d<E>/dt ≈ (<E>_{i+1} - <E>_{i-1}) / (t_{i+1} - t_{i-1})
+        # Use forward/backward differences at boundaries
+        dE_dt = case_when(
+          row_number() == 1 ~ (lead(action_density, 1) - action_density) / (lead(flow_time_num, 1) - flow_time_num),
+          row_number() == n() ~ (action_density - lag(action_density, 1)) / (flow_time_num - lag(flow_time_num, 1)),
+          TRUE ~ (lead(action_density, 1) - lag(action_density, 1)) / (lead(flow_time_num, 1) - lag(flow_time_num, 1))
+        ),
+        # W(t) = 2t^2 <E(t)> + t^3 * d<E(t)>/dt
+        w_t = 2 * flow_time_num^2 * action_density + flow_time_num^3 * dE_dt
+      ) %>%
+      ungroup()
+
+    # Bootstrap analysis for W(t) at each flow time
+    w_results <- w_data %>%
+      group_by(flow_time_num) %>%
+      summarise(
+        mean_w = mean(w_t, na.rm = TRUE),
+        error_w = hadron::bootstrap.meanerror(w_t[!is.na(w_t)], n_boot),
+        .groups = "drop"
+      )
+
+    write_log(paste0("analyze_w_derivative: computed W(t) for ", nrow(w_results), " flow times"))
+
+    # Find flow time where W(t) crosses target value
+    target_reached <- any(w_results$mean_w >= target_w, na.rm = TRUE)
+    target_info <- NULL
+
+    if (target_reached) {
+      below_target <- w_results %>% filter(mean_w < target_w)
+      above_target <- w_results %>% filter(mean_w >= target_w)
+
+      if (nrow(below_target) > 0 && nrow(above_target) > 0) {
+        pt_below <- below_target %>% slice_tail(n = 1)
+        pt_above <- above_target %>% slice_head(n = 1)
+
+        t0 <- pt_below$flow_time_num
+        t1 <- pt_above$flow_time_num
+        y0 <- pt_below$mean_w
+        y1 <- pt_above$mean_w
+
+        flow_time_at_target <- t0 + (target_w - y0) * (t1 - t0) / (y1 - y0)
+
+        err0 <- pt_below$error_w
+        err1 <- pt_above$error_w
+        error_y_at_target <- err0 + (target_w - y0) * (err1 - err0) / (y1 - y0)
+
+        slope <- (y1 - y0) / (t1 - t0)
+        error_at_target <- error_y_at_target / abs(slope)
+
+        target_info <- list(
+          flow_time = flow_time_at_target,
+          error = error_at_target,
+          value = target_w
+        )
+
+        write_log(paste0(
+          "analyze_w_derivative: target W=", target_w, " reached at flow_time = ",
+          round(flow_time_at_target, 4), " ± ", round(error_at_target, 4),
+          " (slope=", round(slope, 6), ", Δy=", round(error_y_at_target, 6), ")"
+        ))
+      } else if (nrow(above_target) > 0) {
+        pt <- above_target %>% slice_head(n = 1)
+        if (nrow(above_target) > 1) {
+          pt_next <- above_target %>% slice(2)
+          slope <- (pt_next$mean_w - pt$mean_w) / (pt_next$flow_time_num - pt$flow_time_num)
+          error_at_target <- pt$error_w / abs(slope)
+        } else {
+          error_at_target <- 0
+        }
+
+        target_info <- list(
+          flow_time = pt$flow_time_num,
+          error = error_at_target,
+          value = pt$mean_w
+        )
+        write_log(paste0(
+          "analyze_w_derivative: target W=", target_w, " reached at first point: flow_time = ",
+          round(pt$flow_time_num, 4), " ± ", round(error_at_target, 4)
+        ))
+      }
+    } else {
+      write_log(paste0("analyze_w_derivative: target W=", target_w, " not reached in data"))
+    }
+
+    # Create plot
+    plot_title <- paste("W(t) = t * d/dt(t² <E(t)>):", name)
+    w_plot <- ggplot(w_results, aes(x = flow_time_num, y = mean_w)) +
+      geom_line(color = "darkgreen") +
+      geom_ribbon(aes(ymin = mean_w - error_w, ymax = mean_w + error_w), fill = "green", alpha = 0.2)
+
+    # Add target value indicator if reached
+    if (!is.null(target_info)) {
+      w_plot <- w_plot +
+        geom_hline(yintercept = target_w, linetype = "dashed", color = "blue", linewidth = 0.8) +
+        geom_vline(xintercept = target_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.8) +
+        annotate("point", x = target_info$flow_time, y = target_w, color = "blue", size = 3) +
+        annotate("errorbar",
+          y = target_w, xmin = target_info$flow_time - target_info$error,
+          xmax = target_info$flow_time + target_info$error,
+          orientation = "y", color = "blue", width = target_w * 0.1, linewidth = 0.8
+        )
+
+      plot_title <- paste0(plot_title, sprintf(
+        "\nt0(W=%.3f) = %.4f +/- %.4f",
+        target_w, target_info$flow_time, target_info$error
+      ))
+    } else {
+      plot_title <- paste0(plot_title, sprintf("\n(Target W=%.3f not reached)", target_w))
+    }
+
+    w_plot <- w_plot +
+      labs(
+        title = plot_title,
+        x = "Wilson Flow Time",
+        y = "W(t) ± Error"
+      ) +
+      theme_minimal()
+
+    # Save plot
+    out_pdf <- file.path(directory, paste0("w_derivative_", sub("\\.txt$", "", name), ".pdf"))
+    write_log(paste0("analyze_w_derivative: saving PDF to ", out_pdf))
+    tryCatch(
+      {
+        pdf(out_pdf, width = 8, height = 6)
+        print(w_plot)
+        dev.off()
+        write_log(paste0("analyze_w_derivative: successfully saved ", out_pdf))
+      },
+      error = function(e) {
+        write_log(paste0("analyze_w_derivative: ERROR saving PDF for ", name, ": ", conditionMessage(e)))
+      }
+    )
+
+    return(list(data = w_results, plot = w_plot, name = name, target_info = target_info))
+  })
+  write_log("analyze_w_derivative: completed all collections")
+  return(results_list)
+}
+
 analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200, target_ad_ft2 = 0.1) {
   write_log(paste0("analyze_action_density: start for directory=", directory, " target_ad_ft2=", target_ad_ft2))
   # Read action density data using data_io.R convention
@@ -336,10 +508,10 @@ plot_topological_charge_samples <- function(data, directory, n_samples = 400, sk
   return(sample_plot)
 }
 
-analyze_wilsonflow <- function(directory, skip_steps = 200, target_ad_ft2 = 0.1) {
+analyze_wilsonflow <- function(directory, skip_steps = 200, target_ad_ft2 = 0.1, target_w = 0.1) {
   # set up logfile for this run
   assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
-  write_log(paste0("analyze_wilsonflow: start for directory=", directory, " skip_steps=", skip_steps, " target_ad_ft2=", target_ad_ft2))
+  write_log(paste0("analyze_wilsonflow: start for directory=", directory, " skip_steps=", skip_steps, " target_ad_ft2=", target_ad_ft2, " target_w=", target_w))
 
   # Wrap entire analysis in tryCatch so errors are logged
   tryCatch(
@@ -374,6 +546,9 @@ analyze_wilsonflow <- function(directory, skip_steps = 200, target_ad_ft2 = 0.1)
 
       action_density_result <- analyze_action_density(directory, skip_steps = skip_steps, target_ad_ft2 = target_ad_ft2)
 
+      # Analyze W(t) = t * d/dt(t^2 <E(t)>)
+      w_derivative_result <- analyze_w_derivative(directory, skip_steps = skip_steps, target_w = target_w)
+
       write_log("analyze_wilsonflow: completed successfully")
     },
     error = function(e) {
@@ -393,11 +568,12 @@ analyze_wilsonflow <- function(directory, skip_steps = 200, target_ad_ft2 = 0.1)
 
 # Main execution
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 2 || length(args) > 3) {
-  stop("Usage: Rscript analysis_wilsonflow_tests.R <directory> <skip_steps> [target_ad_ft2]")
+if (length(args) < 2 || length(args) > 4) {
+  stop("Usage: Rscript analysis_wilsonflow_tests.R <directory> <skip_steps> [target_ad_ft2] [target_w]")
 }
 directory <- args[1]
 assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
 skip_steps <- as.integer(args[2])
-target_ad_ft2 <- if (length(args) == 3) as.numeric(args[3]) else 0.1
-analyze_wilsonflow(directory, skip_steps = skip_steps, target_ad_ft2 = target_ad_ft2)
+target_ad_ft2 <- if (length(args) >= 3) as.numeric(args[3]) else 0.1
+target_w <- if (length(args) >= 4) as.numeric(args[4]) else 0.1
+analyze_wilsonflow(directory, skip_steps = skip_steps, target_ad_ft2 = target_ad_ft2, target_w = target_w)
