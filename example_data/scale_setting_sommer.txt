@@ -1,0 +1,16 @@
+# Static Potential Fit Results (Sommer Scale Setting)
+# V(L) = A - B/L + sigma*L
+
+# Fit Parameters:
+A = 0.398005 ± 0.015962
+B = 0.158579 ± 0.012422
+sigma = 0.030994 ± 0.003828
+
+# Fit Quality:
+chi2/dof = 0.138
+Qval (p-value) = 0.9376
+
+# Scale Setting:
+r_0 = 7.638829 ± 0.508762 (lattice units)
+lattice_spacing_a = 0.065455 ± 0.004359 fm
+

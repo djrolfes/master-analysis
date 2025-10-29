@@ -18,22 +18,22 @@ read_yaml_config <- function(directory) {
 # Function to read data files
 read_data_file <- function(filepath) {
   if (!file.exists(filepath)) stop(paste("File not found:", filepath))
-  
+
   # Read first line, remove leading # if present, use as header
   con <- file(filepath, "r")
   header_line <- readLines(con, n = 1)
   close(con)
-  
+
   header_line <- gsub("^#\\s*", "", header_line)
   col_names <- strsplit(header_line, ",")[[1]]
   col_names <- trimws(col_names)
-  
+
   # Make column names syntactically valid for R
   col_names <- make.names(col_names)
-  
+
   # Read rest of file, skipping first line, using comma as separator and stripping whitespace
   data <- read.table(filepath, header = FALSE, sep = ",", skip = 1, comment.char = "#", stringsAsFactors = FALSE, strip.white = TRUE)
-  
+
   # Ensure the number of columns match
   if (ncol(data) != length(col_names)) {
     warning(paste("Column name/data mismatch in", filepath, ". Expected", length(col_names), "got", ncol(data), ". Truncating to fit."))
@@ -41,33 +41,33 @@ read_data_file <- function(filepath) {
     data <- data[, 1:min_cols, drop = FALSE]
     col_names <- col_names[1:min_cols]
   }
-  
+
   colnames(data) <- col_names
   data
 }
 
 read_wilsonflow_details <- function(directory) {
   config <- read_yaml_config(directory)
-  
+
   # Check if WilsonFlowParams exists
   if (is.null(config$GaugeObservableParams$WilsonFlowParams)) {
     stop("Error: WilsonFlowParams not found in YAML configuration.")
   }
-  
+
   # Check if wilson_flow_filename exists
   filename <- config$GaugeObservableParams$WilsonFlowParams$wilson_flow_filename
   if (is.null(filename) || filename == "") {
     stop("Error: wilson_flow_filename not found in WilsonFlowParams.")
   }
-  
+
   # Construct the filepath
   filepath <- file.path(directory, filename)
-  
+
   # Check if the file exists
   if (!file.exists(filepath)) {
     stop(paste("Error: File not found:", filepath))
   }
-  
+
   # Read the data file
   read_data_file(filepath)
 }
@@ -139,35 +139,35 @@ read_topological_charge_cumulative <- function(directory) {
 # Function to read and parse the ptbcsimulation_log.txt file
 read_ptbc_simulation_log <- function(directory) {
   config <- read_yaml_config(directory)
-  
+
   # Check if PTBCSimulationLoggingParams exists
   if (is.null(config$PTBCSimulationLoggingParams)) {
     stop("Error: PTBCSimulationLoggingParams not found in YAML configuration.")
   }
-  
+
   # Check if log_filename exists
   filename <- config$PTBCSimulationLoggingParams$log_filename
   if (is.null(filename) || filename == "") {
     stop("Error: log_filename not found in PTBCSimulationLoggingParams.")
   }
-  
+
   filepath <- file.path(directory, filename)
   if (!file.exists(filepath)) {
     stop(paste("Error: File not found:", filepath))
   }
-  
+
   lines <- readLines(filepath)
   lines <- lines[!grepl("^#", lines)] # Remove comments
-  
+
   if (length(lines) == 0) {
     return(data.frame())
   }
-  
+
   # Helper to parse bracketed strings
   parse_vector <- function(s) {
     as.numeric(strsplit(gsub("\\[|\\]", "", s), "\\s+")[[1]])
   }
-  
+
   data_list <- lapply(lines, function(line) {
     parts <- strsplit(line, ", ")[[1]]
     list(
@@ -178,11 +178,9 @@ read_ptbc_simulation_log <- function(directory) {
       defects = list(parse_vector(parts[5]))
     )
   })
-  
+
   # Combine list of lists into a data frame
   df <- dplyr::bind_rows(data_list)
-  
+
   return(df)
 }
-
-
