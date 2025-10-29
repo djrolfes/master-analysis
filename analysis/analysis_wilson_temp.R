@@ -4,12 +4,14 @@ library(ggplot2)
 source("data_io.R")
 
 # Simple logging helper
-write_log <- function(msg, logfile = "wilson_temp_analysis.log") {
+write_log <- function(msg) {
+    logfile <- get0("WF_LOG_FILE", ifnotfound = NA)
+    if (is.na(logfile)) logfile <- "wilson_temp_analysis.log"
     timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
     entry <- sprintf("[%s] %s\n", timestamp, msg)
     cat(entry, file = logfile, append = TRUE)
-    cat(entry) # Also print to console
 }
+
 
 # Function to fit the static potential to temporal Wilson loops
 # Model: <W(L,T)> = a * exp(-V(L)*T)
@@ -465,6 +467,8 @@ if (!interactive()) {
 
     directory <- args[1]
     skip_steps <- if (length(args) == 2) as.integer(args[2]) else 0
+
+    assign("WF_LOG_FILE", file.path(directory, "wilson_temp_analysis.log"), envir = .GlobalEnv)
 
     result <- fit_static_potential(directory, skip_steps)
 
