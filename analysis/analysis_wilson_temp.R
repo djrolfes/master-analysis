@@ -147,7 +147,11 @@ fit_static_potential <- function(directory, skip_steps = 0) {
         write_log(paste0("fit_static_potential: fitting L=", L_val, " with ", nrow(L_data), " T values (T>1)"))
 
         # Perform exponential fit: W(T) = a * exp(-V*T)
-        # Using hadron's parametric.nlsfit for proper bootstrap error propagation
+        # Check for numerical issues first
+        if (any(!is.finite(L_data$mean)) || any(!is.finite(L_data$error))) {
+            write_log(paste0("fit_static_potential: L=", L_val, " has non-finite values, skipping"))
+            next
+        }
 
         tryCatch(
             {
@@ -174,12 +178,29 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     round(a_init, 6), ", V=", round(V_init, 6)
                 ))
 
+                # Safeguard weights: avoid division by very small errors or zero
+                # Add a floor to errors to prevent numerical instability
+                error_floor <- max(1e-10, min(L_data$error) * 0.01)
+                safe_errors <- pmax(L_data$error, error_floor)
+                weights <- 1 / (safe_errors^2)
+
+                # Check if weights are finite
+                if (any(!is.finite(weights))) {
+                    write_log(paste0("fit_static_potential: L=", L_val, " has non-finite weights, using unweighted fit"))
+                    weights <- rep(1, nrow(L_data))
+                }
+
+                write_log(paste0(
+                    "fit_static_potential: L=", L_val, " error range: [",
+                    round(min(L_data$error), 8), ", ", round(max(L_data$error), 8), "]"
+                ))
+
                 # Weighted nonlinear least squares fit
                 fit <- nls(
                     mean ~ a * exp(-V * T),
                     data = L_data,
                     start = list(a = a_init, V = V_init),
-                    weights = 1 / (error^2),
+                    weights = weights,
                     control = nls.control(maxiter = 100, warnOnly = TRUE)
                 )
 
