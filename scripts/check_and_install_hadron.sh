@@ -196,13 +196,14 @@ if [ "$NEED_INSTALL" = true ]; then
         chmod +x install
     fi
     
-    # Install directly with R CMD INSTALL to avoid byte-compilation issues
+    # Install directly with R CMD INSTALL to avoid byte-compilation and lazy loading issues
     # The hadron ./install script causes "illegal instruction" on clusters
-    echo -e "${YELLOW}Installing hadron package directly (bypassing byte-compilation)...${NC}"
-    echo -e "${YELLOW}Note: Using --no-byte-compile to avoid cluster CPU instruction incompatibilities${NC}"
+    echo -e "${YELLOW}Installing hadron package directly (bypassing lazy loading and byte-compilation)...${NC}"
+    echo -e "${YELLOW}Note: Using --no-lazy and --no-byte-compile to avoid cluster CPU instruction incompatibilities${NC}"
+    echo -e "${YELLOW}Warning: Package will load slightly slower without lazy loading, but will be functional${NC}"
     
-    # Run R CMD INSTALL directly with flags to avoid byte-compilation
-    R CMD INSTALL --no-byte-compile --no-docs --no-test-load . --library="${R_LIBS_USER}"
+    # Run R CMD INSTALL directly with flags to avoid lazy loading and byte-compilation
+    R CMD INSTALL --no-lazy --no-byte-compile --no-docs --no-test-load . --library="${R_LIBS_USER}"
     
     # Return to original directory
     cd "${ORIGINAL_DIR}"
