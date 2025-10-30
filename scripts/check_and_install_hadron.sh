@@ -35,11 +35,30 @@ check_and_install_r_deps() {
     # Ensure the local library path is used
     .libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()))
     
-    installed_pkgs <- installed.packages(lib.loc=.libPaths())[,'Package']
+    # Critical packages that must be compiled from source for CPU compatibility
+    critical_pkgs <- c('Rcpp', 'dplyr', 'stringr')
+    
+    installed_pkgs <- installed.packages(lib.loc=Sys.getenv('R_LIBS_USER'))[,'Package']
     missing_pkgs <- setdiff(${pkgs_str}, installed_pkgs)
     
+    # Force reinstall critical packages from source if they're not in user library
+    for (pkg in critical_pkgs) {
+        if (pkg %in% ${pkgs_str}) {
+            if (!(pkg %in% installed_pkgs)) {
+                cat('Installing', pkg, 'from SOURCE for CPU compatibility\n')
+                install.packages(pkg, 
+                                dependencies=FALSE,
+                                repos='https://cran.r-project.org',
+                                lib=Sys.getenv('R_LIBS_USER'),
+                                type='source',
+                                INSTALL_opts='--no-lock')
+                missing_pkgs <- setdiff(missing_pkgs, pkg)
+            }
+        }
+    }
+    
     if (length(missing_pkgs) > 0) {
-        cat('Installing missing R packages:', paste(missing_pkgs, collapse=', '), '\n')
+        cat('Installing remaining R packages:', paste(missing_pkgs, collapse=', '), '\n')
         
         # Attempt to install
         install.packages(
@@ -137,6 +156,14 @@ fi
 printf "\n${YELLOW}Checking for core R dependencies...${NC}\n"
 # Note: This step requires system dependencies like libcurl-devel to be installed.
 # Added minpack.lm, ggplot2, yaml, and errors for analysis scripts
+
+# IMPORTANT: On clusters with older CPUs, we need to force Rcpp and dplyr to be
+# compiled from source rather than using pre-built binaries that may contain
+# AVX2/SSE4 instructions. We do this by setting INSTALL_opts.
+printf "${YELLOW}Installing dependencies from source to ensure CPU compatibility...${NC}\n"
+export R_COMPILE_PKGS=1
+export INSTALL_opts="--no-lock"
+
 check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo" "tikzDevice" "ggplot2" "yaml" "errors" #"minpack.lm"
 
 # Check if hadron directory exists
