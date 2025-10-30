@@ -199,23 +199,27 @@ if [ "$NEED_INSTALL" = true ]; then
     # Use devtools::install() with custom arguments to avoid lazy loading issues
     # This is what the hadron ./install script uses, but with args to skip problematic steps
     echo -e "${YELLOW}Installing hadron package using devtools with cluster-compatible options...${NC}"
-    echo -e "${YELLOW}Note: Skipping lazy loading to avoid CPU instruction incompatibilities${NC}"
+    echo -e "${YELLOW}Note: Using --use-vanilla-install to bypass lazy loading that causes CPU instruction errors${NC}"
     
-    # Set environment variables to disable JIT and other optimizations
+    # Set environment variables to disable JIT, compilation, and lazy loading
     export R_ENABLE_JIT=0
     export R_COMPILE_PKGS=0
+    export R_KEEP_PKG_SOURCE=no
+    export _R_SHLIB_STRIP_=true
     
-    # Use devtools::install() with args to skip lazy data loading
-    # This is the same as ./install -q but with additional args
-    Rscript --vanilla -e "
-    .libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()))
-    devtools::install(
-        pkg = '.',
-        quick = TRUE,
-        build = FALSE,
-        args = c('--no-data', '--no-help', '--no-demo', '--no-test-load')
-    )
-    "
+    # Use R CMD INSTALL directly with maximum compatibility flags
+    # This completely bypasses devtools' automatic configurations
+    R --vanilla CMD INSTALL \
+        --no-staged-install \
+        --no-byte-compile \
+        --no-data \
+        --no-help \
+        --no-html \
+        --no-demo \
+        --no-test-load \
+        --no-clean-on-error \
+        --library="${R_LIBS_USER}" \
+        .
     
     # Return to original directory
     cd "${ORIGINAL_DIR}"
