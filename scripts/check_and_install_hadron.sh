@@ -196,14 +196,21 @@ if [ "$NEED_INSTALL" = true ]; then
         chmod +x install
     fi
     
-    # Install directly with R CMD INSTALL to avoid byte-compilation and lazy loading issues
+    # Install directly with R CMD INSTALL to avoid byte-compilation issues
     # The hadron ./install script causes "illegal instruction" on clusters
-    echo -e "${YELLOW}Installing hadron package directly (bypassing lazy loading and byte-compilation)...${NC}"
-    echo -e "${YELLOW}Note: Using --no-lazy and --no-byte-compile to avoid cluster CPU instruction incompatibilities${NC}"
-    echo -e "${YELLOW}Warning: Package will load slightly slower without lazy loading, but will be functional${NC}"
+    echo -e "${YELLOW}Installing hadron package with minimal processing...${NC}"
+    echo -e "${YELLOW}Note: Using --data-compress=none and other flags to avoid cluster CPU instruction incompatibilities${NC}"
     
-    # Run R CMD INSTALL directly with flags to avoid lazy loading and byte-compilation
-    R CMD INSTALL --no-lazy --no-byte-compile --no-docs --no-test-load . --library="${R_LIBS_USER}"
+    # Set environment variable to disable lazy loading during installation
+    export _R_INSTALL_PACKAGES_ELAPSED_TIMEOUT_=9999
+    export R_ENABLE_JIT=0
+    
+    # Run R CMD INSTALL with flags to minimize processing that might trigger illegal instructions
+    # --data-compress=none: Don't compress data (might use incompatible instructions)
+    # --no-byte-compile: Skip byte compilation
+    # --no-docs: Skip documentation
+    # --no-test-load: Don't test loading after install
+    R CMD INSTALL --data-compress=none --no-byte-compile --no-docs --no-test-load --no-staged-install . --library="${R_LIBS_USER}"
     
     # Return to original directory
     cd "${ORIGINAL_DIR}"
