@@ -136,8 +136,8 @@ fi
 # --- Check and Install Core R Dependencies ---
 printf "\n${YELLOW}Checking for core R dependencies...${NC}\n"
 # Note: This step requires system dependencies like libcurl-devel to be installed.
-# Added minpack.lm, ggplot2, and yaml for analysis scripts
-check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo" "tikzDevice" "minpack.lm" "ggplot2" "yaml"
+# Added minpack.lm, ggplot2, yaml, and errors for analysis scripts
+check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo" "tikzDevice" "minpack.lm" "ggplot2" "yaml" "errors"
 
 # Check if hadron directory exists
 if [ ! -d "${HADRON_DIR}" ]; then

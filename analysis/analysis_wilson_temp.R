@@ -36,98 +36,44 @@ fit_static_potential <- function(directory, skip_steps = 0) {
     w_temp_data <- read_data_W_temp_filename(directory)
     write_log(paste0("fit_static_potential: read W_temp data with ", nrow(w_temp_data), " rows"))
 
-    # Check the format of the data
-    # Can be either:
-    # 1. Long format: columns are "step" (or "hmc_step"), "L", "T", "W_temp"
-    # 2. Wide format: columns are "hmc_step", "L_<L>_T_<T>", ...
-
+    # Data is always in long format with columns: "step" (or "hmc_step"), "L", "T", "W_temp"
     col_names <- colnames(w_temp_data)
     write_log(paste0("fit_static_potential: columns: ", paste(col_names, collapse = ", ")))
 
-    # Detect format
-    if (all(c("L", "T", "W_temp") %in% col_names) || all(c("L", "T", "W.temp") %in% col_names)) {
-        # Long format
-        write_log("fit_static_potential: detected long format data")
-
-        # Standardize column names
-        if ("W.temp" %in% col_names) {
-            colnames(w_temp_data)[colnames(w_temp_data) == "W.temp"] <- "W_temp"
-        }
-        if ("step" %in% col_names) {
-            colnames(w_temp_data)[colnames(w_temp_data) == "step"] <- "hmc_step"
-        }
-
-        # Skip thermalization steps
-        if (skip_steps > 0 && "hmc_step" %in% colnames(w_temp_data)) {
-            w_temp_data <- w_temp_data %>% filter(hmc_step > skip_steps)
-            write_log(paste0("fit_static_potential: after skipping ", skip_steps, " steps, ", nrow(w_temp_data), " rows remain"))
-        }
-
-        # Group by L and T, calculate mean and error
-        fit_data <- w_temp_data %>%
-            group_by(L, T) %>%
-            summarise(
-                mean = mean(W_temp, na.rm = TRUE),
-                error = tryCatch(
-                    hadron::bootstrap.meanerror(W_temp[!is.na(W_temp)], R = 200),
-                    error = function(e) sd(W_temp, na.rm = TRUE) / sqrt(sum(!is.na(W_temp)))
-                ),
-                n_points = n(),
-                .groups = "drop"
-            )
-    } else {
-        # Wide format
-        write_log("fit_static_potential: detected wide format data")
-
-        # Skip thermalization steps if requested
-        if (skip_steps > 0) {
-            w_temp_data <- w_temp_data %>% filter(hmc_step > skip_steps)
-            write_log(paste0("fit_static_potential: after skipping ", skip_steps, " steps, ", nrow(w_temp_data), " rows remain"))
-        }
-
-        # Get column names (excluding hmc_step)
-        # Format is typically: L_<L_value>_T_<T_value>
-        wilson_cols <- setdiff(colnames(w_temp_data), "hmc_step")
-        write_log(paste0("fit_static_potential: found ", length(wilson_cols), " Wilson loop columns"))
-
-        # Parse L and T values from column names
-        parse_L_T <- function(col_name) {
-            # Extract L and T from column name like "L_1_T_2" or "L.1.T.2"
-            col_name <- gsub("\\.", "_", col_name) # Replace dots with underscores
-            parts <- strsplit(col_name, "_")[[1]]
-            if (length(parts) >= 4 && parts[1] == "L" && parts[3] == "T") {
-                return(list(L = as.numeric(parts[2]), T = as.numeric(parts[4])))
-            }
-            return(NULL)
-        }
-
-        # Create a data frame with L, T, and mean/error values
-        fit_data_list <- lapply(wilson_cols, function(col_name) {
-            lt <- parse_L_T(col_name)
-            if (!is.null(lt)) {
-                values <- w_temp_data[[col_name]]
-                # Calculate mean and bootstrap error
-                mean_val <- mean(values, na.rm = TRUE)
-                error_val <- tryCatch(
-                    hadron::bootstrap.meanerror(values[!is.na(values)], R = 200),
-                    error = function(e) sd(values, na.rm = TRUE) / sqrt(sum(!is.na(values)))
-                )
-
-                data.frame(
-                    L = lt$L,
-                    T = lt$T,
-                    mean = mean_val,
-                    error = error_val,
-                    n_points = sum(!is.na(values))
-                )
-            } else {
-                NULL
-            }
-        })
-
-        # Remove NULL entries and combine
-        fit_data <- dplyr::bind_rows(fit_data_list[!sapply(fit_data_list, is.null)])
+    # Standardize column names
+    if ("W.temp" %in% col_names) {
+        colnames(w_temp_data)[colnames(w_temp_data) == "W.temp"] <- "W_temp"
     }
+    if ("step" %in% col_names) {
+        colnames(w_temp_data)[colnames(w_temp_data) == "step"] <- "hmc_step"
+    }
+
+    # Skip thermalization steps
+    if (skip_steps > 0 && "hmc_step" %in% colnames(w_temp_data)) {
+        w_temp_data <- w_temp_data %>% filter(hmc_step > skip_steps)
+        write_log(paste0("fit_static_potential: after skipping ", skip_steps, " steps, ", nrow(w_temp_data), " rows remain"))
+    }
+
+    # Group by L and T, calculate mean and error
+    fit_data <- w_temp_data %>%
+        group_by(L, T) %>%
+        summarise(
+            mean = mean(W_temp, na.rm = TRUE),
+            error = tryCatch(
+                hadron::bootstrap.meanerror(W_temp[!is.na(W_temp)], R = 200),
+                error = function(e) sd(W_temp, na.rm = TRUE) / sqrt(sum(!is.na(W_temp)))
+            ),
+            log_mean = mean(log(W_temp), na.rm = TRUE),
+            log_error = tryCatch(
+                hadron::bootstrap.meanerror(log(W_temp[!is.na(W_temp)]), R = 200),
+                error = function(e) {
+                    # Simple error propagation: d(log(x))/dx = 1/x
+                    sd(log(W_temp), na.rm = TRUE) / sqrt(sum(!is.na(W_temp)))
+                }
+            ),
+            n_points = n(),
+            .groups = "drop"
+        )
 
     write_log(paste0("fit_static_potential: prepared ", nrow(fit_data), " data points for fitting"))
 
@@ -203,7 +149,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 error_scale <- median(safe_errors)
                 normalized_errors <- safe_errors / error_scale
 
-                weights <- 1 / (normalized_errors^2)
+                weights <- 1 / (safe_errors^2)
 
                 # Check if weights are finite and reasonable
                 if (any(!is.finite(weights)) || max(weights) / min(weights) > 1e6) {
@@ -217,33 +163,30 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     "], weight range: [", round(min(weights), 4), ", ", round(max(weights), 4), "]"
                 ))
 
-                # Weighted nonlinear least squares fit
-                fit <- nls(
-                    mean ~ a * exp(-V * T),
-                    data = L_data,
-                    start = list(a = a_init, V = V_init),
-                    weights = weights,
-                    control = nls.control(maxiter = 100, warnOnly = TRUE)
+                # Fit using simple.nlsfit on log-space data
+                # log(W) = log(a) - V*T
+                fn <- function(par, x, ...) {
+                    par[1] - par[2] * x
+                }
+
+                fit.result <- simple.nlsfit(
+                    fn = fn,
+                    par.guess = c(log(a_init), V_init),
+                    y = L_data$log_mean,
+                    dy = L_data$log_error,
+                    x = L_data$T,
+                    errormodel = "yerrors"
                 )
 
-                # fit.result <- simple.nlsfit(
-                #    fn = function(par, x, boot.r, ...) {
-                #        par[1] * exp(-par[2] * x)
-                #    },
-                #    par.guess = c(a_init, V_init),
-                #    y = L_data$mean,
-                #    dy = L_data$error,
-                #    x = L_data$T,
-                #    "xyerrors"
-                # )
+                # Optionally print fit summary (comment out to reduce output)
+                # print(summary(fit.result))
 
-                # print(fit.result)
-
-                # Extract V(L) and its error
-                V_fit <- coef(fit)["V"]
-                V_error <- summary(fit)$coefficients["V", "Std. Error"]
-                a_fit <- coef(fit)["a"]
-                a_error <- summary(fit)$coefficients["a", "Std. Error"]
+                # Extract V(L) and its error from simple.nlsfit result
+                # fit.result$t0 contains [log(a), V]
+                V_fit <- fit.result$t0[2]
+                V_error <- fit.result$se[2]
+                a_fit <- exp(fit.result$t0[1])
+                a_error <- a_fit * fit.result$se[1] # Error propagation: d(exp(x))/dx = exp(x)
 
                 write_log(paste0(
                     "fit_static_potential: L=", L_val, " fit results: V=",
