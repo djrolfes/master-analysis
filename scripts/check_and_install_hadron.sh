@@ -196,19 +196,35 @@ if [ "$NEED_INSTALL" = true ]; then
         chmod +x install
     fi
     
-    # Use devtools::install() with custom arguments to avoid lazy loading issues
-    # This is what the hadron ./install script uses, but with args to skip problematic steps
-    echo -e "${YELLOW}Installing hadron package using devtools with cluster-compatible options...${NC}"
-    echo -e "${YELLOW}Note: Using --use-vanilla-install to bypass lazy loading that causes CPU instruction errors${NC}"
+    # Modify DESCRIPTION to disable lazy loading
+    # This is the only way to prevent the "preparing package for lazy loading" step
+    echo -e "${YELLOW}Modifying DESCRIPTION to disable lazy loading for cluster compatibility...${NC}"
     
-    # Set environment variables to disable JIT, compilation, and lazy loading
+    # Backup original DESCRIPTION
+    cp DESCRIPTION DESCRIPTION.bak
+    
+    # Add or modify LazyData and LazyLoad settings
+    if grep -q "^LazyData:" DESCRIPTION; then
+        sed -i 's/^LazyData:.*/LazyData: no/' DESCRIPTION
+    else
+        echo "LazyData: no" >> DESCRIPTION
+    fi
+    
+    if grep -q "^LazyLoad:" DESCRIPTION; then
+        sed -i 's/^LazyLoad:.*/LazyLoad: no/' DESCRIPTION
+    else
+        echo "LazyLoad: no" >> DESCRIPTION
+    fi
+    
+    echo -e "${YELLOW}Installing hadron package with lazy loading disabled...${NC}"
+    echo -e "${YELLOW}Note: This prevents CPU instruction incompatibility issues on the cluster${NC}"
+    
+    # Set environment variables to disable JIT and compilation
     export R_ENABLE_JIT=0
     export R_COMPILE_PKGS=0
     export R_KEEP_PKG_SOURCE=no
-    export _R_SHLIB_STRIP_=true
     
-    # Use R CMD INSTALL directly with maximum compatibility flags
-    # This completely bypasses devtools' automatic configurations
+    # Use R CMD INSTALL directly
     R --vanilla CMD INSTALL \
         --no-staged-install \
         --no-byte-compile \
@@ -217,9 +233,21 @@ if [ "$NEED_INSTALL" = true ]; then
         --no-html \
         --no-demo \
         --no-test-load \
-        --no-clean-on-error \
         --library="${R_LIBS_USER}" \
         .
+    
+    # Store the result
+    INSTALL_RESULT=$?
+    
+    # Restore original DESCRIPTION
+    mv DESCRIPTION.bak DESCRIPTION
+    
+    # Check if installation failed
+    if [ $INSTALL_RESULT -ne 0 ]; then
+        echo -e "${RED}Installation command failed with exit code ${INSTALL_RESULT}${NC}"
+        cd "${ORIGINAL_DIR}"
+        exit 1
+    fi
     
     # Return to original directory
     cd "${ORIGINAL_DIR}"
