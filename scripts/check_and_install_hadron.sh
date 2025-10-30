@@ -196,11 +196,13 @@ if [ "$NEED_INSTALL" = true ]; then
         chmod +x install
     fi
     
-    # Run the install script with -q flag to skip documentation generation
-    # This avoids "illegal instruction" errors on clusters with roxygen2 issues
-    echo -e "${YELLOW}Running hadron install script (quick mode - skipping documentation)...${NC}"
-    echo -e "${YELLOW}Note: This skips roxygen2 documentation generation to avoid cluster compatibility issues${NC}"
-    ./install -q
+    # Install directly with R CMD INSTALL to avoid byte-compilation issues
+    # The hadron ./install script causes "illegal instruction" on clusters
+    echo -e "${YELLOW}Installing hadron package directly (bypassing byte-compilation)...${NC}"
+    echo -e "${YELLOW}Note: Using --no-byte-compile to avoid cluster CPU instruction incompatibilities${NC}"
+    
+    # Run R CMD INSTALL directly with flags to avoid byte-compilation
+    R CMD INSTALL --no-byte-compile --no-docs --no-test-load . --library="${R_LIBS_USER}"
     
     # Return to original directory
     cd "${ORIGINAL_DIR}"
