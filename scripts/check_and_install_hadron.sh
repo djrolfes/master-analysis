@@ -196,58 +196,11 @@ if [ "$NEED_INSTALL" = true ]; then
         chmod +x install
     fi
     
-    # Modify DESCRIPTION to disable lazy loading
-    # This is the only way to prevent the "preparing package for lazy loading" step
-    echo -e "${YELLOW}Modifying DESCRIPTION to disable lazy loading for cluster compatibility...${NC}"
-    
-    # Backup original DESCRIPTION
-    cp DESCRIPTION DESCRIPTION.bak
-    
-    # Add or modify LazyData and LazyLoad settings
-    if grep -q "^LazyData:" DESCRIPTION; then
-        sed -i 's/^LazyData:.*/LazyData: no/' DESCRIPTION
-    else
-        echo "LazyData: no" >> DESCRIPTION
-    fi
-    
-    if grep -q "^LazyLoad:" DESCRIPTION; then
-        sed -i 's/^LazyLoad:.*/LazyLoad: no/' DESCRIPTION
-    else
-        echo "LazyLoad: no" >> DESCRIPTION
-    fi
-    
-    echo -e "${YELLOW}Installing hadron package with lazy loading disabled...${NC}"
-    echo -e "${YELLOW}Note: This prevents CPU instruction incompatibility issues on the cluster${NC}"
-    
-    # Set environment variables to disable JIT and compilation
-    export R_ENABLE_JIT=0
-    export R_COMPILE_PKGS=0
-    export R_KEEP_PKG_SOURCE=no
-    
-    # Use R CMD INSTALL directly
-    R --vanilla CMD INSTALL \
-        --no-staged-install \
-        --no-byte-compile \
-        --no-data \
-        --no-help \
-        --no-html \
-        --no-demo \
-        --no-test-load \
-        --library="${R_LIBS_USER}" \
-        .
-    
-    # Store the result
-    INSTALL_RESULT=$?
-    
-    # Restore original DESCRIPTION
-    mv DESCRIPTION.bak DESCRIPTION
-    
-    # Check if installation failed
-    if [ $INSTALL_RESULT -ne 0 ]; then
-        echo -e "${RED}Installation command failed with exit code ${INSTALL_RESULT}${NC}"
-        cd "${ORIGINAL_DIR}"
-        exit 1
-    fi
+    # Run the install script with -q flag to skip documentation generation
+    # This avoids "illegal instruction" errors on clusters with roxygen2 issues
+    echo -e "${YELLOW}Running hadron install script (quick mode - skipping documentation)...${NC}"
+    echo -e "${YELLOW}Note: This skips roxygen2 documentation generation to avoid cluster compatibility issues${NC}"
+    ./install -q
     
     # Return to original directory
     cd "${ORIGINAL_DIR}"
