@@ -1,3 +1,16 @@
+# Set up library paths to include project-local R library
+# This ensures packages installed by check_and_install_hadron.sh are found
+script_dir <- tryCatch(
+    dirname(sys.frame(1)$ofile),
+    error = function(e) getwd()
+)
+project_root <- dirname(script_dir)
+local_r_lib <- file.path(project_root, ".R", "library")
+
+if (dir.exists(local_r_lib)) {
+    .libPaths(c(local_r_lib, .libPaths()))
+}
+
 library(hadron)
 library(dplyr)
 library(ggplot2)
@@ -212,6 +225,19 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     weights = weights,
                     control = nls.control(maxiter = 100, warnOnly = TRUE)
                 )
+
+                # fit.result <- simple.nlsfit(
+                #    fn = function(par, x, boot.r, ...) {
+                #        par[1] * exp(-par[2] * x)
+                #    },
+                #    par.guess = c(a_init, V_init),
+                #    y = L_data$mean,
+                #    dy = L_data$error,
+                #    x = L_data$T,
+                #    "xyerrors"
+                # )
+
+                # print(fit.result)
 
                 # Extract V(L) and its error
                 V_fit <- coef(fit)["V"]
@@ -500,6 +526,23 @@ if (!interactive()) {
 
     assign("WF_LOG_FILE", file.path(directory, "wilson_temp_analysis.log"), envir = .GlobalEnv)
 
+    result <- fit_static_potential(directory, skip_steps)
+
+    if (!is.null(result) && !is.null(result$fit_params)) {
+        cat("\n=== Static Potential Fit Results ===\n")
+        cat(sprintf("A     = %.6f ± %.6f\n", result$fit_params["A"], result$fit_errors["A"]))
+        cat(sprintf("B     = %.6f ± %.6f\n", result$fit_params["B"], result$fit_errors["B"]))
+        cat(sprintf("sigma = %.6f ± %.6f\n", result$fit_params["sigma"], result$fit_errors["sigma"]))
+        cat("\n=== Scale Setting (Sommer) ===\n")
+        cat(sprintf("r_0   = %.6f ± %.6f (lattice units)\n", result$r_0, result$r_0_error))
+        cat(sprintf("a     = %.6f ± %.6f fm\n", result$a_fm, result$a_fm_error))
+    }
+}
+if (interactive()) {
+    directory <- "../example_data" # Replace with your data directory
+    skip_steps <- if (length(args) == 2) as.integer(args[2]) else 0
+
+    assign("WF_LOG_FILE", file.path(directory, "wilson_temp_analysis.log"), envir = .GlobalEnv)
     result <- fit_static_potential(directory, skip_steps)
 
     if (!is.null(result) && !is.null(result$fit_params)) {
