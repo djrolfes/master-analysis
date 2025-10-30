@@ -196,21 +196,26 @@ if [ "$NEED_INSTALL" = true ]; then
         chmod +x install
     fi
     
-    # Install directly with R CMD INSTALL to avoid byte-compilation issues
-    # The hadron ./install script causes "illegal instruction" on clusters
-    echo -e "${YELLOW}Installing hadron package with minimal processing...${NC}"
-    echo -e "${YELLOW}Note: Using --data-compress=none and other flags to avoid cluster CPU instruction incompatibilities${NC}"
+    # Use devtools::install() with custom arguments to avoid lazy loading issues
+    # This is what the hadron ./install script uses, but with args to skip problematic steps
+    echo -e "${YELLOW}Installing hadron package using devtools with cluster-compatible options...${NC}"
+    echo -e "${YELLOW}Note: Skipping lazy loading to avoid CPU instruction incompatibilities${NC}"
     
-    # Set environment variable to disable lazy loading during installation
-    export _R_INSTALL_PACKAGES_ELAPSED_TIMEOUT_=9999
+    # Set environment variables to disable JIT and other optimizations
     export R_ENABLE_JIT=0
+    export R_COMPILE_PKGS=0
     
-    # Run R CMD INSTALL with flags to minimize processing that might trigger illegal instructions
-    # --data-compress=none: Don't compress data (might use incompatible instructions)
-    # --no-byte-compile: Skip byte compilation
-    # --no-docs: Skip documentation
-    # --no-test-load: Don't test loading after install
-    R CMD INSTALL --data-compress=none --no-byte-compile --no-docs --no-test-load --no-staged-install . --library="${R_LIBS_USER}"
+    # Use devtools::install() with args to skip lazy data loading
+    # This is the same as ./install -q but with additional args
+    Rscript --vanilla -e "
+    .libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths()))
+    devtools::install(
+        pkg = '.',
+        quick = TRUE,
+        build = FALSE,
+        args = c('--no-data', '--no-help', '--no-demo', '--no-test-load')
+    )
+    "
     
     # Return to original directory
     cd "${ORIGINAL_DIR}"
