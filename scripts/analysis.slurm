@@ -10,7 +10,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --nodelist=lnode[13-17]
+#SBATCH --exclude=lnode[10-12],lcpunode[01-02]
 
     set -euo pipefail
 if [ -n "${SLURM_JOB_ID:-}" ]; then

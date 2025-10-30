@@ -10,7 +10,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=28
 #SBATCH --mem=32G
-#SBATCH --nodelist=lnode[13-17]
+#SBATCH --exclude=lnode[10-12],lcpunode[01-02]
 
 set -e  # Exit on error
 
