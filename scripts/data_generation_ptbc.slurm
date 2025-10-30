@@ -12,6 +12,7 @@
 #SBATCH --cpus-per-task=3
 #SBATCH --mem=32G
 #SBATCH --gres=gpu:pascal:8
+#SBATCH --nodelist=lnode[13-17]
 
 set -euo pipefail
 if [ -n "${SLURM_JOB_ID:-}" ]; then

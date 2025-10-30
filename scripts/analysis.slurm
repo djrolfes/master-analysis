@@ -10,6 +10,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
+#SBATCH --nodelist=lnode[13-17]
 
     set -euo pipefail
 if [ -n "${SLURM_JOB_ID:-}" ]; then
@@ -18,16 +19,6 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     module load GCC/11.2.0
     module load R
     module load Python
-    
-    # Disable advanced CPU instructions in BLAS to prevent illegal instruction errors
-    # This is safer on heterogeneous clusters where compile-time and runtime CPUs may differ
-    export OPENBLAS_CORETYPE=CORE2
-    export MKL_ENABLE_INSTRUCTIONS=SSE4_2
-    export OMP_NUM_THREADS=1  # Prevent BLAS from using multiple threads
-    
-    # Skip computeacf on cluster due to BLAS incompatibility (illegal instruction errors)
-    # This function uses tcrossprod which triggers CPU instruction mismatches
-    export SKIP_COMPUTEACF=1
 fi
 
 # --- Parse optional -skip flag ---

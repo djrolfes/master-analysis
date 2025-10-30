@@ -6,6 +6,13 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export R_LIBS_USER="${PROJECT_ROOT}/.R/library"
 mkdir -p "$R_LIBS_USER"
 
+# Check CPU capabilities to determine compilation strategy
+CPU_FLAGS=$(cat /proc/cpuinfo | grep flags | head -1)
+HAS_AVX2=false
+if echo "$CPU_FLAGS" | grep -q " avx2 "; then
+    HAS_AVX2=true
+fi
+
 HADRON_DIR="${PROJECT_ROOT}/extern/hadron"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -20,6 +27,17 @@ echo -e "${YELLOW}Project root: ${PROJECT_ROOT}${NC}"
 echo -e "${YELLOW}R library path set to: ${R_LIBS_USER}${NC}"
 echo -e "${YELLOW}Hadron directory: ${HADRON_DIR}${NC}"
 echo -e "${YELLOW}Note: This script also installs minpack.lm and other dependencies for analysis scripts${NC}"
+echo ""
+echo -e "${YELLOW}CPU Architecture Check:${NC}"
+if [ "$HAS_AVX2" = true ]; then
+    echo -e "${GREEN}✓ This CPU supports AVX2 instructions${NC}"
+    echo -e "${GREEN}  Pre-compiled packages can be used safely${NC}"
+else
+    echo -e "${RED}✗ This CPU does NOT support AVX2 instructions${NC}"
+    echo -e "${YELLOW}  All packages will be compiled from source for compatibility${NC}"
+    echo -e "${YELLOW}  This may take longer but will work on all cluster nodes${NC}"
+fi
+echo ""
 
 # Function to check and install required R packages
 check_and_install_r_deps() {
@@ -37,6 +55,7 @@ check_and_install_r_deps() {
     
     # Critical packages that must be compiled from source for CPU compatibility
     critical_pkgs <- c('Rcpp', 'dplyr', 'stringr')
+    force_source <- Sys.getenv('FORCE_SOURCE') == 'true'
     
     installed_pkgs <- installed.packages(lib.loc=Sys.getenv('R_LIBS_USER'))[,'Package']
     missing_pkgs <- setdiff(${pkgs_str}, installed_pkgs)
@@ -51,7 +70,7 @@ check_and_install_r_deps() {
                                 repos='https://cran.r-project.org',
                                 lib=Sys.getenv('R_LIBS_USER'),
                                 type='source',
-                                INSTALL_opts='--no-lock')
+                                INSTALL_opts=c('--no-lock'))
                 missing_pkgs <- setdiff(missing_pkgs, pkg)
             }
         }
@@ -60,12 +79,15 @@ check_and_install_r_deps() {
     if (length(missing_pkgs) > 0) {
         cat('Installing remaining R packages:', paste(missing_pkgs, collapse=', '), '\n')
         
-        # Attempt to install
+        # Install from source if CPU lacks AVX2, otherwise use default
+        pkg_type <- if(force_source) 'source' else getOption('pkgType')
+        
         install.packages(
             missing_pkgs, 
             dependencies=TRUE, 
             repos='https://cran.r-project.org',
-            lib=Sys.getenv('R_LIBS_USER')
+            lib=Sys.getenv('R_LIBS_USER'),
+            type=pkg_type
         )
         
         # After installation, check again if they are present
@@ -157,12 +179,23 @@ printf "\n${YELLOW}Checking for core R dependencies...${NC}\n"
 # Note: This step requires system dependencies like libcurl-devel to be installed.
 # Added minpack.lm, ggplot2, yaml, and errors for analysis scripts
 
-# IMPORTANT: On clusters with older CPUs, we need to force Rcpp and dplyr to be
-# compiled from source rather than using pre-built binaries that may contain
-# AVX2/SSE4 instructions. We do this by setting INSTALL_opts.
-printf "${YELLOW}Installing dependencies from source to ensure CPU compatibility...${NC}\n"
-export R_COMPILE_PKGS=1
-export INSTALL_opts="--no-lock"
+# IMPORTANT: On clusters with heterogeneous CPUs, we need to ensure compatibility
+# If this CPU lacks AVX2, we MUST compile from source with conservative flags
+if [ "$HAS_AVX2" = false ]; then
+    printf "${YELLOW}CPU lacks AVX2 - forcing ALL packages to compile from source with conservative flags${NC}\n"
+    export R_COMPILE_PKGS=1
+    export INSTALL_opts="--no-lock"
+    # Use conservative CPU flags that work on older CPUs
+    export CFLAGS="-O2 -march=core2"
+    export CXXFLAGS="-O2 -march=core2"
+    export FFLAGS="-O2 -march=core2"
+    FORCE_SOURCE=true
+else
+    printf "${YELLOW}CPU has AVX2 - but installing critical packages from source for cluster compatibility${NC}\n"
+    export R_COMPILE_PKGS=1
+    export INSTALL_opts="--no-lock"
+    FORCE_SOURCE=false
+fi
 
 check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo" "tikzDevice" "ggplot2" "yaml" "errors" #"minpack.lm"
 
@@ -227,6 +260,15 @@ if [ "$NEED_INSTALL" = true ]; then
     # This avoids "illegal instruction" errors on clusters with roxygen2 issues
     echo -e "${YELLOW}Running hadron install script (quick mode - skipping documentation)...${NC}"
     echo -e "${YELLOW}Note: This skips roxygen2 documentation generation to avoid cluster compatibility issues${NC}"
+    
+    # Export CPU-specific compilation flags if needed
+    if [ "$HAS_AVX2" = false ]; then
+        echo -e "${YELLOW}Using conservative CPU flags for compilation (march=core2)${NC}"
+        export CFLAGS="-O2 -march=core2"
+        export CXXFLAGS="-O2 -march=core2"
+        export FFLAGS="-O2 -march=core2"
+    fi
+    
     ./install -q
     
     # Return to original directory
