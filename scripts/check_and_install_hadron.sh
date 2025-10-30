@@ -19,6 +19,7 @@ echo -e "${YELLOW}Checking hadron package installation...${NC}"
 echo -e "${YELLOW}Project root: ${PROJECT_ROOT}${NC}"
 echo -e "${YELLOW}R library path set to: ${R_LIBS_USER}${NC}"
 echo -e "${YELLOW}Hadron directory: ${HADRON_DIR}${NC}"
+echo -e "${YELLOW}Note: This script also installs minpack.lm and other dependencies for analysis scripts${NC}"
 
 # Function to check and install required R packages
 check_and_install_r_deps() {
@@ -121,9 +122,7 @@ show_r_library_info() {
 show_r_library_info
 
 # --- Check for Essential System Dependencies ---
-printf "\n${YELLOW}Checking for essential system dependencies...${NC}\n"
-
-# Check for GSL (required by hadron)
+printf "\n${YELLOW}Checking for essential system dependencies (like GSL)...${NC}\n"
 if ! command -v gsl-config &> /dev/null; then
     printf "${RED}ERROR: 'gsl-config' command not found.${NC}\n"
     printf "The GNU Scientific Library (GSL) is required by the 'hadron' package.\n"
@@ -131,25 +130,14 @@ if ! command -v gsl-config &> /dev/null; then
     printf "On RHEL/CentOS, try: sudo dnf install gsl-devel\n"
     exit 1
 else
-    printf "${GREEN}✓ GSL (gsl-config) found.${NC}\n"
-fi
-
-# Check for LaTeX (required by tikzDevice)
-if ! command -v pdflatex &> /dev/null; then
-    printf "${YELLOW}WARNING: 'pdflatex' command not found.${NC}\n"
-    printf "LaTeX is required by the 'tikzDevice' package for generating plots.\n"
-    printf "On Debian/Ubuntu, try: sudo apt-get install texlive texlive-latex-extra texlive-fonts-extra\n"
-    printf "On RHEL/CentOS, try: sudo dnf install texlive texlive-latex texlive-collection-fontsextra\n"
-    printf "Note: tikzDevice will be installed but may not work without LaTeX.\n"
-else
-    printf "${GREEN}✓ LaTeX (pdflatex) found.${NC}\n"
+    printf "${GREEN}GSL (gsl-config) found.${NC}\n"
 fi
 
 # --- Check and Install Core R Dependencies ---
 printf "\n${YELLOW}Checking for core R dependencies...${NC}\n"
 # Note: This step requires system dependencies like libcurl-devel to be installed.
-# tikzDevice requires LaTeX (pdflatex) to be installed on the system
-check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo" "tikzDevice"
+# Added minpack.lm, ggplot2, and yaml for analysis scripts
+check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo" "tikzDevice" "minpack.lm" "ggplot2" "yaml"
 
 # Check if hadron directory exists
 if [ ! -d "${HADRON_DIR}" ]; then

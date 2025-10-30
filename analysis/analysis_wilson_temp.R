@@ -180,19 +180,28 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
                 # Safeguard weights: avoid division by very small errors or zero
                 # Add a floor to errors to prevent numerical instability
-                error_floor <- max(1e-10, min(L_data$error) * 0.01)
+                # Use more aggressive floor: either 1e-8 or 1% of minimum error
+                min_error <- min(L_data$error[L_data$error > 0], na.rm = TRUE)
+                error_floor <- max(1e-8, min_error * 0.01, 1e-10)
                 safe_errors <- pmax(L_data$error, error_floor)
-                weights <- 1 / (safe_errors^2)
 
-                # Check if weights are finite
-                if (any(!is.finite(weights))) {
-                    write_log(paste0("fit_static_potential: L=", L_val, " has non-finite weights, using unweighted fit"))
+                # Normalize errors to prevent very large or very small numbers
+                # This helps avoid numerical overflow/underflow in QR decomposition
+                error_scale <- median(safe_errors)
+                normalized_errors <- safe_errors / error_scale
+
+                weights <- 1 / (normalized_errors^2)
+
+                # Check if weights are finite and reasonable
+                if (any(!is.finite(weights)) || max(weights) / min(weights) > 1e6) {
+                    write_log(paste0("fit_static_potential: L=", L_val, " has problematic weights (non-finite or huge range), using unweighted fit"))
                     weights <- rep(1, nrow(L_data))
                 }
 
                 write_log(paste0(
                     "fit_static_potential: L=", L_val, " error range: [",
-                    round(min(L_data$error), 8), ", ", round(max(L_data$error), 8), "]"
+                    round(min(L_data$error), 10), ", ", round(max(L_data$error), 10),
+                    "], weight range: [", round(min(weights), 4), ", ", round(max(weights), 4), "]"
                 ))
 
                 # Weighted nonlinear least squares fit
