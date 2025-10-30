@@ -137,7 +137,7 @@ fi
 printf "\n${YELLOW}Checking for core R dependencies...${NC}\n"
 # Note: This step requires system dependencies like libcurl-devel to be installed.
 # Added minpack.lm, ggplot2, yaml, and errors for analysis scripts
-check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo" "tikzDevice" "minpack.lm" "ggplot2" "yaml" "errors"
+check_and_install_r_deps "devtools" "roxygen2" "Rcpp" "abind" "boot" "dplyr" "R6" "stringr" "zoo" "tikzDevice" "ggplot2" "yaml" "errors" #"minpack.lm"
 
 # Check if hadron directory exists
 if [ ! -d "${HADRON_DIR}" ]; then
@@ -176,6 +176,10 @@ fi
 if [ "$NEED_INSTALL" = true ]; then
     echo -e "${YELLOW}Installing hadron package from: ${HADRON_DIR}${NC}"
     
+    # Remove existing installation if present (to ensure clean install)
+    echo -e "${YELLOW}Removing any existing hadron installation...${NC}"
+    R --slave -e ".libPaths(c(Sys.getenv('R_LIBS_USER'), .libPaths())); remove.packages('hadron', lib=Sys.getenv('R_LIBS_USER'))" 2>/dev/null || true
+    
     # Save current directory
     ORIGINAL_DIR=$(pwd)
     
@@ -192,9 +196,11 @@ if [ "$NEED_INSTALL" = true ]; then
         chmod +x install
     fi
     
-    # Run the install script
-    echo -e "${YELLOW}Running hadron install script...${NC}"
-    ./install
+    # Run the install script with -q flag to skip documentation generation
+    # This avoids "illegal instruction" errors on clusters with roxygen2 issues
+    echo -e "${YELLOW}Running hadron install script (quick mode - skipping documentation)...${NC}"
+    echo -e "${YELLOW}Note: This skips roxygen2 documentation generation to avoid cluster compatibility issues${NC}"
+    ./install -q
     
     # Return to original directory
     cd "${ORIGINAL_DIR}"
