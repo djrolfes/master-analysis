@@ -54,21 +54,42 @@ fit_static_potential <- function(directory, skip_steps = 0) {
         write_log(paste0("fit_static_potential: after skipping ", skip_steps, " steps, ", nrow(w_temp_data), " rows remain"))
     }
 
-    # Group by L and T, calculate mean and error
+    # Group by L and T, calculate mean and error using uwerr (Gamma method)
+    # This properly accounts for autocorrelation (e.g., from topological freezing)
     fit_data <- w_temp_data %>%
         group_by(L, T) %>%
         summarise(
             mean = mean(W_temp, na.rm = TRUE),
             error = tryCatch(
-                hadron::bootstrap.meanerror(W_temp[!is.na(W_temp)], R = 200),
-                error = function(e) sd(W_temp, na.rm = TRUE) / sqrt(sum(!is.na(W_temp)))
-            ),
-            log_mean = mean(log(W_temp), na.rm = TRUE),
-            log_error = tryCatch(
-                hadron::bootstrap.meanerror(log(W_temp[!is.na(W_temp)]), R = 200),
+                {
+                    # Use uwerr (Gamma method) for proper autocorrelation analysis
+                    W_clean <- W_temp[!is.na(W_temp)]
+                    if (length(W_clean) > 10) {
+                        # nrep should be the total length for a single replica
+                        uwerr_result <- uwerr(data = W_clean, nrep = length(W_clean), S = 1.5, pl = FALSE)
+                        # Extract integrated autocorrelation time
+                        tau_int <- if (!is.null(uwerr_result$tauint)) uwerr_result$tauint else 0.5
+
+                        # Log autocorrelation information (especially important with topological freezing)
+                        write_log(paste0(
+                            "fit_static_potential: L=", L[1], ", T=", T[1],
+                            " tau_int=", round(tau_int, 2),
+                            ", n_eff=", round(length(W_clean) / (2 * tau_int), 1),
+                            ", error=", format(uwerr_result$dvalue, scientific = TRUE, digits = 3)
+                        ))
+
+                        # Return the uwerr error which includes autocorrelation correction
+                        uwerr_result$dvalue
+                    } else {
+                        sd(W_clean) / sqrt(length(W_clean))
+                    }
+                },
                 error = function(e) {
-                    # Simple error propagation: d(log(x))/dx = 1/x
-                    sd(log(W_temp), na.rm = TRUE) / sqrt(sum(!is.na(W_temp)))
+                    write_log(paste0(
+                        "fit_static_potential: ERROR in uwerr for L=", L[1], ", T=", T[1],
+                        ": ", conditionMessage(e)
+                    ))
+                    sd(W_temp, na.rm = TRUE) / sqrt(sum(!is.na(W_temp)))
                 }
             ),
             n_points = n(),
@@ -91,7 +112,9 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
     unique_L <- sort(unique(fit_data$L))
     v_of_L_data <- data.frame()
-    wilson_fits <- list() # Store fit objects for plotting
+    v_of_L_data_nls <- data.frame() # For comparison with plain nls
+    wilson_fits <- list() # Store fit objects for plotting (hadron)
+    wilson_fits_nls <- list() # Store fit objects for plotting (plain nls)
 
     for (L_val in unique_L) {
         L_data <- fit_data %>%
@@ -104,6 +127,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
         }
 
         write_log(paste0("fit_static_potential: fitting L=", L_val, " with ", nrow(L_data), " T values (T>1)"))
+        write_log(paste0("fit_static_potential: L=", L_val, " T range: [", min(L_data$T), ", ", max(L_data$T), "]"))
 
         # Perform exponential fit: W(T) = a * exp(-V*T)
         # Check for numerical issues first
@@ -137,60 +161,40 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     round(a_init, 6), ", V=", round(V_init, 6)
                 ))
 
-                # Safeguard weights: avoid division by very small errors or zero
-                # Add a floor to errors to prevent numerical instability
-                # Use more aggressive floor: either 1e-8 or 1% of minimum error
-                min_error <- min(L_data$error[L_data$error > 0], na.rm = TRUE)
-                error_floor <- max(1e-8, min_error * 0.01, 1e-10)
-                safe_errors <- pmax(L_data$error, error_floor)
-
-                # Normalize errors to prevent very large or very small numbers
-                # This helps avoid numerical overflow/underflow in QR decomposition
-                error_scale <- median(safe_errors)
-                normalized_errors <- safe_errors / error_scale
-
-                weights <- 1 / (safe_errors^2)
-
-                # Check if weights are finite and reasonable
-                if (any(!is.finite(weights)) || max(weights) / min(weights) > 1e6) {
-                    write_log(paste0("fit_static_potential: L=", L_val, " has problematic weights (non-finite or huge range), using unweighted fit"))
-                    weights <- rep(1, nrow(L_data))
+                # Use parametric.nlsfit with exponential model
+                # W(T) = a * exp(-V*T)
+                fn_exp <- function(par, x, boot.r, ...) {
+                    par[1] * exp(-par[2] * x)
                 }
 
-                write_log(paste0(
-                    "fit_static_potential: L=", L_val, " error range: [",
-                    round(min(L_data$error), 10), ", ", round(max(L_data$error), 10),
-                    "], weight range: [", round(min(weights), 4), ", ", round(max(weights), 4), "]"
-                ))
-
-                # Fit using simple.nlsfit on log-space data
-                # log(W) = log(a) - V*T
-                fn <- function(par, x, ...) {
-                    par[1] - par[2] * x
-                }
-
-                fit.result <- simple.nlsfit(
-                    fn = fn,
-                    par.guess = c(log(a_init), V_init),
-                    y = L_data$log_mean,
-                    dy = L_data$log_error,
+                fit.result <- parametric.nlsfit(
+                    fn = fn_exp,
+                    par.guess = c(a_init, V_init),
+                    y = L_data$mean,
+                    dy = L_data$error,
                     x = L_data$T,
-                    errormodel = "yerrors"
+                    boot.R = 200
                 )
 
-                # Optionally print fit summary (comment out to reduce output)
-                # print(summary(fit.result))
-
-                # Extract V(L) and its error from simple.nlsfit result
-                # fit.result$t0 contains [log(a), V]
+                # Extract V(L) and its error from bootstrap fit
+                # fit.result$t0 contains [a, V]
+                a_fit <- fit.result$t0[1]
                 V_fit <- fit.result$t0[2]
+                a_error <- fit.result$se[1]
                 V_error <- fit.result$se[2]
-                a_fit <- exp(fit.result$t0[1])
-                a_error <- a_fit * fit.result$se[1] # Error propagation: d(exp(x))/dx = exp(x)
+
+                # Get chi²/dof for this fit
+                chisqr_per_dof <- if (!is.null(fit.result$chisqr) && !is.null(fit.result$dof)) {
+                    fit.result$chisqr / fit.result$dof
+                } else {
+                    NA
+                }
 
                 write_log(paste0(
                     "fit_static_potential: L=", L_val, " fit results: V=",
-                    round(V_fit, 6), " ± ", round(V_error, 6)
+                    round(V_fit, 6), " ± ", round(V_error, 6),
+                    ", chi2/dof=", round(chisqr_per_dof, 3),
+                    " (chi2=", round(fit.result$chisqr, 2), ", dof=", fit.result$dof, ")"
                 ))
 
                 v_of_L_data <- rbind(v_of_L_data, data.frame(
@@ -208,6 +212,47 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     a_error = a_error,
                     V_error = V_error,
                     T_range = range(L_data$T)
+                )
+
+                # Also fit with plain nls for comparison
+                tryCatch(
+                    {
+                        nls_fit <- nls(mean ~ a * exp(-V * T),
+                            data = L_data,
+                            start = list(a = a_init, V = V_init),
+                            weights = 1 / (L_data$error^2)
+                        )
+
+                        nls_summary <- summary(nls_fit)
+                        V_fit_nls <- coef(nls_fit)["V"]
+                        a_fit_nls <- coef(nls_fit)["a"]
+                        V_error_nls <- nls_summary$coefficients["V", "Std. Error"]
+                        a_error_nls <- nls_summary$coefficients["a", "Std. Error"]
+
+                        write_log(paste0(
+                            "fit_static_potential: L=", L_val, " plain nls results: V=",
+                            round(V_fit_nls, 6), " ± ", round(V_error_nls, 6)
+                        ))
+
+                        v_of_L_data_nls <- rbind(v_of_L_data_nls, data.frame(
+                            L = L_val,
+                            V = V_fit_nls,
+                            V_error = V_error_nls,
+                            a = a_fit_nls,
+                            a_error = a_error_nls
+                        ))
+
+                        wilson_fits_nls[[as.character(L_val)]] <- list(
+                            a = a_fit_nls,
+                            V = V_fit_nls,
+                            a_error = a_error_nls,
+                            V_error = V_error_nls,
+                            T_range = range(L_data$T)
+                        )
+                    },
+                    error = function(e) {
+                        write_log(paste0("fit_static_potential: ERROR in plain nls for L=", L_val, ": ", conditionMessage(e)))
+                    }
                 )
             },
             error = function(e) {
@@ -304,6 +349,79 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
             writeLines(scale_content, scale_file)
             write_log(paste0("fit_static_potential: successfully wrote ", scale_file))
+
+            # Now fit V(L) using plain nls for comparison
+            params_nls <- NULL
+            param_errors_nls <- NULL
+            r_0_nls <- NA
+            r_0_error_nls <- NA
+            a_fm_nls <- NA
+            a_fm_error_nls <- NA
+
+            if (nrow(v_of_L_data_nls) > 0) {
+                write_log("fit_static_potential: fitting V(L) = B - C/L + sigma*L with plain nls")
+
+                tryCatch(
+                    {
+                        nls_potential_fit <- nls(V ~ A - B / L + sigma * L,
+                            data = v_of_L_data_nls,
+                            start = list(A = A_init, B = B_init, sigma = sigma_init),
+                            weights = 1 / (v_of_L_data_nls$V_error^2)
+                        )
+
+                        nls_pot_summary <- summary(nls_potential_fit)
+                        params_nls <- coef(nls_potential_fit)
+                        names(params_nls) <- c("A", "B", "sigma")
+                        param_errors_nls <- nls_pot_summary$coefficients[, "Std. Error"]
+                        names(param_errors_nls) <- c("A", "B", "sigma")
+
+                        # Calculate chi2/dof for nls fit
+                        residuals_nls <- v_of_L_data_nls$V - predict(nls_potential_fit)
+                        weights_nls <- 1 / (v_of_L_data_nls$V_error^2)
+                        chisq_nls <- sum(weights_nls * residuals_nls^2)
+                        dof_nls <- nrow(v_of_L_data_nls) - 3
+
+                        write_log(paste0("fit_static_potential: V(L) plain nls results:"))
+                        write_log(paste0("  A = ", round(params_nls["A"], 6), " ± ", round(param_errors_nls["A"], 6)))
+                        write_log(paste0("  B = ", round(params_nls["B"], 6), " ± ", round(param_errors_nls["B"], 6)))
+                        write_log(paste0("  sigma = ", round(params_nls["sigma"], 6), " ± ", round(param_errors_nls["sigma"], 6)))
+                        write_log(paste0("  chi2/dof = ", round(chisq_nls / dof_nls, 3)))
+
+                        # Calculate r_0 for nls
+                        r_0_nls <- sqrt((1.65 + params_nls["B"]) / params_nls["sigma"])
+
+                        # Error propagation for r_0: r_0 = sqrt((1.65 + B) / sigma)
+                        # dr_0/dB = 1/(2*sqrt((1.65+B)/sigma)) * 1/sigma
+                        # dr_0/dsigma = 1/(2*sqrt((1.65+B)/sigma)) * (-(1.65+B)/sigma^2)
+                        dr0_dB <- 1 / (2 * r_0_nls * params_nls["sigma"])
+                        dr0_dsigma <- -(1.65 + params_nls["B"]) / (2 * r_0_nls * params_nls["sigma"]^2)
+                        r_0_error_nls <- sqrt((dr0_dB * param_errors_nls["B"])^2 + (dr0_dsigma * param_errors_nls["sigma"])^2)
+
+                        a_fm_nls <- 0.5 / r_0_nls
+                        a_fm_error_nls <- a_fm_nls * (r_0_error_nls / r_0_nls)
+
+                        write_log(paste0("  r_0 = ", round(r_0_nls, 6), " ± ", round(r_0_error_nls, 6)))
+                        write_log(paste0("  lattice spacing a = ", round(a_fm_nls, 6), " ± ", round(a_fm_error_nls, 6), " fm"))
+
+                        # Append nls results to scale setting file
+                        scale_content_nls <- sprintf(
+                            "\n\n# Plain NLS Fit Results (for comparison)\n# V(L) = A - B/L + sigma*L\n\n# Fit Parameters (NLS):\nA_nls = %.6f ± %.6f\nB_nls = %.6f ± %.6f\nsigma_nls = %.6f ± %.6f\n\n# Fit Quality (NLS):\nchi2/dof_nls = %.3f\n\n# Scale Setting (NLS):\nr_0_nls = %.6f ± %.6f (lattice units)\nlattice_spacing_a_nls = %.6f ± %.6f fm\n",
+                            params_nls["A"], param_errors_nls["A"],
+                            params_nls["B"], param_errors_nls["B"],
+                            params_nls["sigma"], param_errors_nls["sigma"],
+                            chisq_nls / dof_nls,
+                            r_0_nls, r_0_error_nls,
+                            a_fm_nls, a_fm_error_nls
+                        )
+
+                        write(scale_content_nls, file = scale_file, append = TRUE)
+                        write_log(paste0("fit_static_potential: appended nls results to ", scale_file))
+                    },
+                    error = function(e) {
+                        write_log(paste0("fit_static_potential: ERROR in plain nls V(L) fit: ", conditionMessage(e)))
+                    }
+                )
+            }
 
             # Create plots
             # Plot 2: All Wilson loops on one plot with fits (using ggplot2)
@@ -436,6 +554,148 @@ fit_static_potential <- function(directory, skip_steps = 0) {
             dev.off()
 
             write_log(paste0("fit_static_potential: successfully saved ", out_pdf))
+
+            # Create separate PDF for plain nls fits if available
+            if (!is.null(params_nls) && nrow(v_of_L_data_nls) > 0) {
+                out_pdf_nls <- file.path(directory, "static_potential_fit_nonhadron.pdf")
+                write_log(paste0("fit_static_potential: saving nls PDF to ", out_pdf_nls))
+
+                pdf(out_pdf_nls, width = 10, height = 6)
+
+                # Plot 1: V(L) fit using plain nls (match hadron plot style)
+                # Use same plot range as hadron plot
+                L_range_nls <- range(v_of_L_data_nls$L)
+                plot_range_nls <- c(L_range_nls[1], max(L_range_nls[2], r_0_nls * 1.1))
+
+                # Calculate fit curve over extended range
+                L_extended_nls <- seq(plot_range_nls[1], plot_range_nls[2], length.out = 100)
+                V_extended_nls <- params_nls["A"] - params_nls["B"] / L_extended_nls + params_nls["sigma"] * L_extended_nls
+
+                # Calculate y-range to match hadron plot style
+                y_data_range_nls <- range(c(
+                    v_of_L_data_nls$V - v_of_L_data_nls$V_error,
+                    v_of_L_data_nls$V + v_of_L_data_nls$V_error
+                ))
+                y_fit_range_nls <- range(V_extended_nls)
+                y_range_nls <- range(c(y_data_range_nls, y_fit_range_nls))
+                y_padding_nls <- 0.05 * diff(y_range_nls)
+                y_range_nls <- y_range_nls + c(-y_padding_nls, y_padding_nls)
+
+                # Plot data points with error bars
+                plot(v_of_L_data_nls$L, v_of_L_data_nls$V,
+                    xlim = plot_range_nls,
+                    ylim = y_range_nls,
+                    xlab = "Spatial Separation L (lattice units)",
+                    ylab = "Potential V(L)",
+                    main = sprintf(
+                        "Static Potential V(L) = A - B/L + sigma*L (Plain NLS)\nA=%.4f±%.4f, B=%.4f±%.4f, sigma=%.4f±%.4f\nr_0=%.4f±%.4f, a=%.4f±%.4f fm",
+                        params_nls["A"], param_errors_nls["A"],
+                        params_nls["B"], param_errors_nls["B"],
+                        params_nls["sigma"], param_errors_nls["sigma"],
+                        r_0_nls, r_0_error_nls,
+                        a_fm_nls, a_fm_error_nls
+                    ),
+                    pch = 19,
+                    col = "black",
+                    cex = 1.2
+                )
+
+                # Add error bars
+                arrows(v_of_L_data_nls$L, v_of_L_data_nls$V - v_of_L_data_nls$V_error,
+                    v_of_L_data_nls$L, v_of_L_data_nls$V + v_of_L_data_nls$V_error,
+                    length = 0.05, angle = 90, code = 3, col = "black", lwd = 1.5
+                )
+
+                # Add fit curve with gray confidence band (approximate)
+                # Calculate error band using parameter uncertainties
+                V_error_band <- sqrt(
+                    param_errors_nls["A"]^2 +
+                        (param_errors_nls["B"] / L_extended_nls)^2 +
+                        (param_errors_nls["sigma"] * L_extended_nls)^2
+                )
+
+                polygon(c(L_extended_nls, rev(L_extended_nls)),
+                    c(V_extended_nls - V_error_band, rev(V_extended_nls + V_error_band)),
+                    col = rgb(0.5, 0.5, 0.5, alpha = 0.5), border = NA
+                )
+
+                # Add fit curve on top
+                lines(L_extended_nls, V_extended_nls, col = "black", lwd = 2)
+
+                # Add r_0 marker if valid
+                if (!is.na(r_0_nls)) {
+                    rect(r_0_nls - r_0_error_nls, par("usr")[3],
+                        r_0_nls + r_0_error_nls, par("usr")[4],
+                        col = rgb(0, 0, 1, alpha = 0.15), border = NA
+                    )
+                    abline(v = r_0_nls, col = "blue", lwd = 1, lty = 1)
+                    text(r_0_nls, par("usr")[3] + 0.05 * diff(par("usr")[3:4]),
+                        sprintf("r_0 = %.3f ± %.3f", r_0_nls, r_0_error_nls),
+                        col = "blue", pos = 4, cex = 0.9
+                    )
+                }
+
+                # Plot 2: Wilson loops with nls fits
+                if (length(wilson_fits_nls) > 0) {
+                    fit_curves_list_nls <- lapply(names(wilson_fits_nls), function(L_val) {
+                        fit_params <- wilson_fits_nls[[L_val]]
+                        T_range <- seq(fit_params$T_range[1], fit_params$T_range[2], length.out = 50)
+
+                        W_fit <- fit_params$a * exp(-fit_params$V * T_range)
+                        dW_da <- exp(-fit_params$V * T_range)
+                        dW_dV <- -fit_params$a * T_range * exp(-fit_params$V * T_range)
+                        W_error <- sqrt((dW_da * fit_params$a_error)^2 + (dW_dV * fit_params$V_error)^2)
+
+                        data.frame(
+                            L = as.numeric(L_val),
+                            T = T_range,
+                            W_fit = W_fit,
+                            W_lower = W_fit - W_error,
+                            W_upper = W_fit + W_error
+                        )
+                    })
+                    fit_curves_data_nls <- do.call(rbind, fit_curves_list_nls)
+
+                    wilson_plot_nls <- ggplot() +
+                        geom_ribbon(
+                            data = fit_curves_data_nls,
+                            aes(x = T, ymin = W_lower, ymax = W_upper, fill = factor(L), group = L),
+                            alpha = 0.2
+                        ) +
+                        geom_line(
+                            data = fit_curves_data_nls,
+                            aes(x = T, y = W_fit, color = factor(L), group = L),
+                            linewidth = 1, alpha = 0.9
+                        ) +
+                        geom_point(
+                            data = fit_data_plot,
+                            aes(x = T, y = mean, color = factor(L)),
+                            size = 2.5, alpha = 1
+                        ) +
+                        geom_errorbar(
+                            data = fit_data_plot,
+                            aes(x = T, y = mean, ymin = mean - error, ymax = mean + error, color = factor(L)),
+                            width = 0.15, alpha = 0.9
+                        ) +
+                        scale_y_log10() +
+                        scale_color_brewer(palette = "Set1") +
+                        scale_fill_brewer(palette = "Set1") +
+                        labs(
+                            title = "Temporal Wilson Loops <W(L,T)> vs T (Plain NLS Fits)",
+                            x = "Temporal Extent T",
+                            y = "<W(L,T)> (log scale)",
+                            color = "Spatial\nSeparation L",
+                            fill = "Spatial\nSeparation L"
+                        ) +
+                        theme_minimal(base_size = 14) +
+                        theme(legend.position = "right")
+
+                    print(wilson_plot_nls)
+                }
+
+                dev.off()
+                write_log(paste0("fit_static_potential: successfully saved ", out_pdf_nls))
+            }
 
             return(list(
                 v_of_L_data = v_of_L_data,
