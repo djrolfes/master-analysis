@@ -28,7 +28,7 @@ write_log <- function(msg) {
 
 # Function to fit the static potential to temporal Wilson loops
 # Model: <W(L,T)> = a * exp(-V(L)*T)
-# where V(L) = B - C/L + sigma*L (static potential)
+# where V(L) = A + B/L + sigma*L (static potential)
 fit_static_potential <- function(directory, skip_steps = 0) {
     write_log(paste0("fit_static_potential: start for directory=", directory))
 
@@ -268,15 +268,15 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
     write_log(paste0("fit_static_potential: successfully fit V(L) for ", nrow(v_of_L_data), " L values"))
 
-    # Now fit V(L) = B - C/L + sigma*L to the extracted V(L) values
-    write_log("fit_static_potential: fitting V(L) = B - C/L + sigma*L")
+    # Now fit V(L) = A - B/L + sigma*L to the extracted V(L) values
+    write_log("fit_static_potential: fitting V(L) = A - B/L + sigma*L")
 
     tryCatch(
         {
             # Initial parameter guesses
-            # V(L) = A - B/L + sigma*L (renamed: A=constant, B=Coulomb, sigma=string tension)
+            # V(L) = A + B/L + sigma*L (renamed: A=constant, B=Coulomb, sigma=string tension)
             A_init <- mean(v_of_L_data$V)
-            B_init <- 0.1
+            B_init <- -0.1
             sigma_init <- 0.01
 
             write_log(paste0(
@@ -286,7 +286,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
             # Define fit function for V(L) with required boot.r parameter
             fn_potential <- function(par, x, boot.r, ...) {
-                par[1] - par[2] / x + par[3] * x
+                par[1] + par[2] / x + par[3] * x
             }
 
             # Bootstrap fit using parametric.nlsfit
@@ -337,7 +337,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
             write_log(paste0("fit_static_potential: writing scale setting to ", scale_file))
 
             scale_content <- sprintf(
-                "# Static Potential Fit Results (Sommer Scale Setting)\n# V(L) = A - B/L + sigma*L\n\n# Fit Parameters:\nA = %.6f ± %.6f\nB = %.6f ± %.6f\nsigma = %.6f ± %.6f\n\n# Fit Quality:\nchi2/dof = %.3f\nQval (p-value) = %.4f\n\n# Scale Setting:\nr_0 = %.6f ± %.6f (lattice units)\nlattice_spacing_a = %.6f ± %.6f fm\n",
+                "# Static Potential Fit Results (Sommer Scale Setting)\n# V(L) = A + B/L + sigma*L\n\n# Fit Parameters:\nA = %.6f ± %.6f\nB = %.6f ± %.6f\nsigma = %.6f ± %.6f\n\n# Fit Quality:\nchi2/dof = %.3f\nQval (p-value) = %.4f\n\n# Scale Setting:\nr_0 = %.6f ± %.6f (lattice units)\nlattice_spacing_a = %.6f ± %.6f fm\n",
                 params["A"], param_errors["A"],
                 params["B"], param_errors["B"],
                 params["sigma"], param_errors["sigma"],
@@ -359,11 +359,11 @@ fit_static_potential <- function(directory, skip_steps = 0) {
             a_fm_error_nls <- NA
 
             if (nrow(v_of_L_data_nls) > 0) {
-                write_log("fit_static_potential: fitting V(L) = B - C/L + sigma*L with plain nls")
+                write_log("fit_static_potential: fitting V(L) = A + B/L + sigma*L with plain nls")
 
                 tryCatch(
                     {
-                        nls_potential_fit <- nls(V ~ A - B / L + sigma * L,
+                        nls_potential_fit <- nls(V ~ A + B / L + sigma * L,
                             data = v_of_L_data_nls,
                             start = list(A = A_init, B = B_init, sigma = sigma_init),
                             weights = 1 / (v_of_L_data_nls$V_error^2)
@@ -405,7 +405,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
                         # Append nls results to scale setting file
                         scale_content_nls <- sprintf(
-                            "\n\n# Plain NLS Fit Results (for comparison)\n# V(L) = A - B/L + sigma*L\n\n# Fit Parameters (NLS):\nA_nls = %.6f ± %.6f\nB_nls = %.6f ± %.6f\nsigma_nls = %.6f ± %.6f\n\n# Fit Quality (NLS):\nchi2/dof_nls = %.3f\n\n# Scale Setting (NLS):\nr_0_nls = %.6f ± %.6f (lattice units)\nlattice_spacing_a_nls = %.6f ± %.6f fm\n",
+                            "\n\n# Plain NLS Fit Results (for comparison)\n# V(L) = A + B/L + sigma*L\n\n# Fit Parameters (NLS):\nA_nls = %.6f ± %.6f\nB_nls = %.6f ± %.6f\nsigma_nls = %.6f ± %.6f\n\n# Fit Quality (NLS):\nchi2/dof_nls = %.3f\n\n# Scale Setting (NLS):\nr_0_nls = %.6f ± %.6f (lattice units)\nlattice_spacing_a_nls = %.6f ± %.6f fm\n",
                             params_nls["A"], param_errors_nls["A"],
                             params_nls["B"], param_errors_nls["B"],
                             params_nls["sigma"], param_errors_nls["sigma"],
@@ -518,7 +518,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 xlab = "Spatial Separation L (lattice units)",
                 ylab = "Potential V(L)",
                 main = sprintf(
-                    "Static Potential V(L) = A - B/L + sigma*L\nA=%.4f±%.4f, B=%.4f±%.4f, sigma=%.4f±%.4f\nr_0=%.4f±%.4f, a=%.4f±%.4f fm",
+                    "Static Potential V(L) = A + B/L + sigma*L\nA=%.4f±%.4f, B=%.4f±%.4f, sigma=%.4f±%.4f\nr_0=%.4f±%.4f, a=%.4f±%.4f fm",
                     params["A"], param_errors["A"],
                     params["B"], param_errors["B"],
                     params["sigma"], param_errors["sigma"],
@@ -569,7 +569,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
                 # Calculate fit curve over extended range
                 L_extended_nls <- seq(plot_range_nls[1], plot_range_nls[2], length.out = 100)
-                V_extended_nls <- params_nls["A"] - params_nls["B"] / L_extended_nls + params_nls["sigma"] * L_extended_nls
+                V_extended_nls <- params_nls["A"] + params_nls["B"] / L_extended_nls + params_nls["sigma"] * L_extended_nls
 
                 # Calculate y-range to match hadron plot style
                 y_data_range_nls <- range(c(
@@ -588,7 +588,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     xlab = "Spatial Separation L (lattice units)",
                     ylab = "Potential V(L)",
                     main = sprintf(
-                        "Static Potential V(L) = A - B/L + sigma*L (Plain NLS)\nA=%.4f±%.4f, B=%.4f±%.4f, sigma=%.4f±%.4f\nr_0=%.4f±%.4f, a=%.4f±%.4f fm",
+                        "Static Potential V(L) = A + B/L + sigma*L (Plain NLS)\nA=%.4f±%.4f, B=%.4f±%.4f, sigma=%.4f±%.4f\nr_0=%.4f±%.4f, a=%.4f±%.4f fm",
                         params_nls["A"], param_errors_nls["A"],
                         params_nls["B"], param_errors_nls["B"],
                         params_nls["sigma"], param_errors_nls["sigma"],

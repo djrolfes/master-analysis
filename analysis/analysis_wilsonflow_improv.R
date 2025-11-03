@@ -71,9 +71,17 @@ analyze_wilsonflow_improv <- function(directory, filename = "action_densities_cl
       write_log(paste0("analyze_wilsonflow_improv: WARNING - no valid values for factor ", fc))
       br <- c(mean = NA, error = NA)
     } else {
-      # bootstrap.meanerror returns only the error (standard deviation)
-      error <- hadron::bootstrap.meanerror(absdiff, n_boot)
-      br <- c(mean = mean(absdiff), error = error)
+      br <- hadron::bootstrap.meanerror(absdiff, n_boot)
+      # bootstrap.meanerror may return a named vector or scalar; ensure we extract mean/error
+      if (!is.null(names(br)) && all(c("mean", "error") %in% names(br))) {
+        br <- c(mean = as.numeric(br["mean"]), error = as.numeric(br["error"]))
+      } else if (length(br) == 2) {
+        br <- as.numeric(br)
+        names(br) <- c("mean", "error")
+      } else {
+        # fallback: compute mean and sd/sqrt(N) as naive error
+        br <- c(mean = mean(absdiff), error = sd(absdiff) / sqrt(length(absdiff)))
+      }
     }
     # factor value parsed from header name if numeric
     fac_val <- suppressWarnings(as.numeric(fc))
