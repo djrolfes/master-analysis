@@ -54,6 +54,7 @@ def analyze_directory(directory, skip_steps="1250"):
     r_scripts = [
         ["Rscript", "analysis_SimulationLoggingParams_log_file.R", directory, str(skip_steps)],
         ["Rscript", "analysis_Plaquette.R", directory, str(skip_steps)],
+        ["Rscript", "analysis_action_density.R", directory, str(skip_steps)],
         ["Rscript", "analysis_wilsonflow_tests.R", directory, str(skip_steps)],
         ["Rscript", "analysis_wilson_temp.R", directory, str(skip_steps)],
         # ["Rscript", "analysis_wilsonflow_improv.R", directory, str(skip_steps)],
