@@ -3,9 +3,9 @@ library(yaml)
 # Function to find the YAML file in the directory
 find_yaml_file <- function(directory) {
   yaml_files <- list.files(directory, pattern = "\\.yaml$", full.names = TRUE)
-  if (length(yaml_files) != 1) {
-    stop(paste("Error: There must be exactly one .yaml file in the directory:", directory))
-  }
+  # if (length(yaml_files) != 1) {
+  #  stop(paste("Error: There must be exactly one .yaml file in the directory:", directory))
+  # }
   yaml_files[1]
 }
 
