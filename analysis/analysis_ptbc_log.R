@@ -18,9 +18,6 @@ analyze_acceptance <- function(directory, data) {
     write_log("Acceptance analysis skipped: no data.")
     return(NULL)
   }
-  tmp <- sort(data$defects[[1]], TRUE)
-  print(tmp)
-
   num_defects <- length(data$defects[[1]])
   expected_len <- max(0, num_defects - 1)
 
@@ -30,7 +27,6 @@ analyze_acceptance <- function(directory, data) {
   total_accepts_per_replica <- vector("numeric", length = length(data$defects[[1]]))
   for (i in seq_len(nrow(data))) {
     row <- data[i, ]
-    print(row)
     ascending <- as.logical(row$ascending)
     accepts <- unlist(row$accepts)
     sorted_defects <- sort(data$defects[[i]], !ascending)
@@ -255,7 +251,6 @@ analyze_ptbc_log <- function(directory, skip_initial = 0) {
   # Read config and data
   config <- read_yaml_config(directory)
   ptbc_data <- read_ptbc_simulation_log(directory)
-  print(head(ptbc_data))
 
   if (skip_initial > 0) {
     ptbc_data <- ptbc_data %>% filter(step > skip_initial)
