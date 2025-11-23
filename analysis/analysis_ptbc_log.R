@@ -18,29 +18,65 @@ analyze_acceptance <- function(directory, data) {
     write_log("Acceptance analysis skipped: no data.")
     return(NULL)
   }
-  accepts_matrix <- do.call(rbind, data$accepts)
-  # Use bootstrap.meanError on each column (rank)
-  bootstrap_results <- apply(accepts_matrix, 2, function(col) {
-    # bootstrap.meanerror returns only the error
-    error <- hadron::bootstrap.meanerror(col, R = 100)
-    # Compute mean separately
-    c(mean = mean(col), error = error)
-  })
+  tmp <- sort(data$defects[[1]], TRUE)
+  print(tmp)
+
+  num_defects <- length(data$defects[[1]])
+  expected_len <- max(0, num_defects - 1)
+
+  # Store the normalized accepts back into a local variable for the rest of the function
+  # (the later code will use data$accepts and expects the canonical ordering)
+  swap_attempts_per_replica <- vector("numeric", length = length(data$defects[[1]]))
+  total_accepts_per_replica <- vector("numeric", length = length(data$defects[[1]]))
+  for (i in seq_len(nrow(data))) {
+    row <- data[i, ]
+    print(row)
+    ascending <- as.logical(row$ascending)
+    accepts <- unlist(row$accepts)
+    sorted_defects <- sort(data$defects[[i]], !ascending)
+
+    if (!is.na(ascending) && !ascending) {
+      accepts <- rev(accepts)
+    }
+
+
+    for (j in seq_along(accepts)) {
+      replica_index <- j
+      partner_index <- j + 1
+
+      swap_attempts_per_replica[replica_index] <- swap_attempts_per_replica[replica_index] + 1
+      total_accepts_per_replica[replica_index] <- total_accepts_per_replica[replica_index] + accepts[j]
+      swap_attempts_per_replica[partner_index] <- swap_attempts_per_replica[partner_index] + 1
+      total_accepts_per_replica[partner_index] <- total_accepts_per_replica[partner_index] + accepts[j]
+    }
+  }
+  acceptance_rates <- total_accepts_per_replica / swap_attempts_per_replica
+
+  # TODO: save the swaps of the replicas into lists and do a bootstrap
+  # accepts_matrix <- do.call(rbind, data$accepts)
+  # Use bootstrap.meanError on each column (replica)
+  # Increased R from 100 to 400 for better error estimates (best practices)
+  # bootstrap_results <- apply(accepts_matrix, 2, function(col) {
+  # bootstrap.meanError is suitable for bootstrapping the mean of a vector
+  #   result <- hadron::bootstrap.meanerror(col, R = 400)
+  # The result is a vector with mean and error
+  #  c(mean = mean(col), error = result)
+  # })
 
   # Prepare data for plotting
   plot_data <- data.frame(
-    Rank = 0:(ncol(accepts_matrix) - 1),
-    Mean = bootstrap_results["mean", ],
-    Error = bootstrap_results["error", ]
+    Replica = 0:(length(data$defects[[1]]) - 1),
+    Mean = acceptance_rates
+    # Error = bootstrap_results["error", ]
   )
 
   # Generate and save the plot
-  p <- ggplot(plot_data, aes(x = Rank, y = Mean)) +
+  p <- ggplot(plot_data, aes(x = Replica, y = Mean)) +
     geom_point(size = 3) +
-    geom_errorbar(aes(ymin = Mean - Error, ymax = Mean + Error), width = 0.2) +
+    # geom_errorbar(aes(ymin = Mean - Error, ymax = Mean + Error), width = 0.2) +
     labs(
-      title = "Acceptance Rate per Rank",
-      x = "Rank",
+      title = "Acceptance Rate per Relplica",
+      x = "Replica",
       y = "Acceptance Rate"
     ) +
     theme_minimal()
@@ -132,11 +168,12 @@ analyze_acceptance_by_defect_distance <- function(directory, swap_df, num_bins =
     mutate(dist_bin = cut(defect_dist, breaks = num_bins))
 
   # Group by the new bins and calculate the mean acceptance rate and its error
+  # Increased R from 100 to 400 for better error estimates (best practices)
   acceptance_by_bin <- binned_data %>%
     group_by(dist_bin) %>%
     summarise(
       acceptance_rate = mean(accepted),
-      acceptance_error = hadron::bootstrap.meanerror(accepted, R = 100),
+      acceptance_error = hadron::bootstrap.meanerror(accepted, R = 400),
       .groups = "drop"
     )
 
@@ -211,52 +248,6 @@ analyze_delta_h_by_defect_distance <- function(directory, swap_df, num_bins = 30
   return(NULL)
 }
 
-# Function to plot defect values per rank over HMC steps
-plot_defects_by_rank <- function(directory, data) {
-  if (nrow(data) == 0) {
-    write_log("Defect by rank plotting skipped: no data.")
-    return(NULL)
-  }
-
-  # Extract defects matrix: each row is a step, each column is a rank
-  defects_matrix <- do.call(rbind, data$defects)
-  num_ranks <- ncol(defects_matrix)
-
-  # Convert to long format for ggplot
-  plot_data <- data.frame(
-    step = rep(data$step, each = num_ranks),
-    rank = rep(0:(num_ranks - 1), times = nrow(data)),
-    defect = as.vector(t(defects_matrix))
-  )
-
-  # Create output PDF file
-  output_path <- file.path(directory, "defects_by_rank.pdf")
-  pdf(output_path, width = 10, height = 6)
-
-  # Create one plot per rank
-  for (r in 0:(num_ranks - 1)) {
-    rank_data <- plot_data %>% filter(rank == r)
-
-    p <- ggplot(rank_data, aes(x = step, y = defect)) +
-      geom_line(color = "steelblue", linewidth = 0.5) +
-      # geom_point(size = 1.5, alpha = 0.6) +
-      labs(
-        title = paste("Defect Value vs HMC Step for Rank", r),
-        x = "HMC Step",
-        y = "Defect Value"
-      ) +
-      ylim(0, 1) +
-      theme_minimal()
-
-    print(p)
-  }
-
-  dev.off()
-  write_log(paste("Defects by rank plots saved to", output_path))
-
-  return(NULL)
-}
-
 # Main analysis function for PTBC log
 analyze_ptbc_log <- function(directory, skip_initial = 0) {
   write_log(paste("Starting PTBC log analysis for directory:", directory))
@@ -264,6 +255,7 @@ analyze_ptbc_log <- function(directory, skip_initial = 0) {
   # Read config and data
   config <- read_yaml_config(directory)
   ptbc_data <- read_ptbc_simulation_log(directory)
+  print(head(ptbc_data))
 
   if (skip_initial > 0) {
     ptbc_data <- ptbc_data %>% filter(step > skip_initial)
@@ -277,8 +269,7 @@ analyze_ptbc_log <- function(directory, skip_initial = 0) {
     write_log(paste(capture.output(print(acceptance_results)), collapse = "\n"))
   }
 
-  # Plot defect evolution by rank
-  plot_defects_by_rank(directory, ptbc_data)
+  return()
 
   # Track defects
   defect_swap_results <- track_defect_swaps(directory, ptbc_data)

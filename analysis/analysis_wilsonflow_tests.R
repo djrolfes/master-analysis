@@ -16,8 +16,8 @@ write_log <- function(msg) {
   cat(entry, file = logfile, append = TRUE)
 }
 
-bootstrap_analysis <- function(data, n_boot = 200) {
-  write_log("bootstrap_analysis: start")
+bootstrap_analysis <- function(data, n_boot = 400) {
+  write_log(paste0("bootstrap_analysis: start with n_boot=", n_boot))
   results <- data %>%
     pivot_longer(-hmc_step, names_to = "flow_time", values_to = "observable") %>%
     group_by(flow_time) %>%
@@ -54,7 +54,7 @@ plot_heatmap <- function(data) {
 
 
 # Function to compute average distance to closest integer for each flow_time and plot
-compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 200) {
+compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 400) {
   write_log(paste0("compute_avg_dist_to_integer: start (skip_steps=", skip_steps, ", n_boot=", n_boot, ")"))
   # Skip initial thermalization steps if requested
   if (skip_steps > 0) {
@@ -85,7 +85,7 @@ compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 200) {
   return(list(data = avg_dist, plot = avg_dist_plot))
 }
 
-analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot = 200, target_ad_ft2 = 0.1, target_w = 0.1) {
+analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot = 400, target_ad_ft2 = 0.1, target_w = 0.1) {
   write_log(paste0("analyze_combined_action_density: start for directory=", directory))
   # Read action density data using data_io.R convention
   action_density_collection <- read_action_densities(directory)

@@ -3,289 +3,139 @@ library(dplyr)
 library(hadron) # Assuming hadron package is installed and available
 source("data_io.R") # Assuming data_io.R is in the working directory
 
-
+# Simple per-run logger
+write_log <- function(msg) {
+  logfile <- get0("WF_LOG_FILE", ifnotfound = NA)
+  if (is.na(logfile)) logfile <- "analysis_debug.log"
+  timestamp <- format(Sys.time(), "%Y-%m-%d %H:%M:%S")
+  entry <- sprintf("[%s] %s\n", timestamp, msg)
+  cat(entry, file = logfile, append = TRUE)
+}
 
 analyze_plaquette <- function(directory, skip_steps = 0) {
+  write_log(paste0("analyze_plaquette: start directory=", directory, " skip_steps=", skip_steps))
+
   # Read the plaquette data
   plaquette_data <- read_data_plaquette_filename(directory)
+  write_log(paste0("analyze_plaquette: read ", nrow(plaquette_data), " rows"))
   print(head(plaquette_data))
 
-  # Timeseries plot using plot_timeseries
-  # Prepare data frame with y (plaquette values) and t (HMC steps)
-  timeseries_dat <- data.frame(
-    y = plaquette_data$plaquette,
-    t = plaquette_data$step
-  )
-
-  # Get total number of measurements
-  n_total <- length(plaquette_data$plaquette)
-
-  # ===== STEP 1: DETECT THERMALIZATION FIRST =====
-  # Determine the measurement interval (spacing between HMC steps in data)
-  if (nrow(plaquette_data) > 1) {
-    step_intervals <- diff(plaquette_data$step)
-    measurement_interval <- as.integer(median(step_intervals))
+  # Skip initial steps
+  if (skip_steps > 0 && nrow(plaquette_data) > skip_steps) {
+    analysis_data <- plaquette_data$plaquette[(skip_steps + 1):nrow(plaquette_data)]
   } else {
-    measurement_interval <- 1 # Default if only one measurement
+    analysis_data <- plaquette_data$plaquette
   }
 
-  # Detect plateau using running mean and moving window statistics
-  window_size <- min(50, floor(n_total / 4)) # Use 50 points or 1/4 of data, whichever is smaller
-  thermalization_idx <- 1 # Default: start from beginning
+  write_log(paste0("analyze_plaquette: analyzing ", length(analysis_data), " points after skip"))
 
-  if (n_total > window_size * 2) {
-    # Calculate rolling standard deviation over windows
-    rolling_std <- sapply((window_size + 1):n_total, function(i) {
-      sd(plaquette_data$plaquette[(i - window_size + 1):i])
-    })
-
-    # Calculate rolling mean over windows
-    rolling_mean <- sapply((window_size + 1):n_total, function(i) {
-      mean(plaquette_data$plaquette[(i - window_size + 1):i])
-    })
-
-    # Find where the rolling mean stabilizes (derivative becomes small)
-    if (length(rolling_mean) > 10) {
-      mean_derivative <- abs(diff(rolling_mean))
-      # Normalize by the overall std
-      overall_std <- sd(plaquette_data$plaquette)
-      normalized_derivative <- mean_derivative / overall_std
-
-      # Find first point where derivative stays below threshold for sustained period
-      threshold <- 0.02 # 2% of std per measurement
-      sustained_length <- min(20, floor(length(normalized_derivative) / 5))
-
-      for (i in 1:(length(normalized_derivative) - sustained_length)) {
-        if (all(normalized_derivative[i:(i + sustained_length)] < threshold)) {
-          thermalization_idx <- i + window_size
-          break
-        }
-      }
-    }
-  }
-
-  # Convert to HMC steps
-  thermalization_hmc_step <- plaquette_data$step[thermalization_idx]
-
-  # Use the maximum of provided skip_steps, detected thermalization, or minimum threshold
-  minimum_skip <- max(100, measurement_interval * 10) # At least 100 steps or 10 measurements
-  recommended_skip <- max(skip_steps, thermalization_hmc_step, minimum_skip)
-
-  # Find the index corresponding to the recommended skip
-  stat_start <- max(thermalization_idx, skip_steps + 1)
-  stat_end <- n_total
-
-  # ===== STEP 2: PERFORM UWERR ANALYSIS ON THERMALIZED DATA =====
-  # Extract thermalized data for analysis
-  analysis_data <- plaquette_data$plaquette[stat_start:stat_end]
-
-  # Perform uwerr analysis on thermalized data
-  uw_result <- tryCatch(
+  # 1. Autocorrelation analysis with uwerr (best practices)
+  write_log("analyze_plaquette: computing uwerr for autocorrelation analysis")
+  uw <- tryCatch(
     {
       hadron::uwerrprimary(analysis_data, pl = FALSE)
     },
     error = function(e) {
-      warning(paste("uwerr analysis failed:", conditionMessage(e)))
-      return(NULL)
+      write_log(paste0("ERROR in uwerrprimary: ", conditionMessage(e)))
+      NULL
     }
   )
 
-  # Create PDF with multiple plots
-  pdf(file.path(directory, "timeseries_plaquette.pdf"), width = 12, height = 10)
+  if (!is.null(uw)) {
+    tauint <- uw$tauint
+    dtauint <- uw$dtauint
+    mean_plaq <- uw$value
+    error_plaq <- uw$dvalue
+    n_eff <- length(analysis_data) / (2 * tauint)
 
-  # Set up layout: Two timeseries on top (full width), histogram and uwerr below
-  # Layout matrix: 1 and 2 are timeseries plots, 3 is histogram, 4 is uwerr
-  layout(matrix(c(1, 1, 2, 2, 3, 4), nrow = 3, byrow = TRUE), heights = c(1.5, 1.5, 1))
+    write_log(sprintf("analyze_plaquette: <P> = %.6f ± %.6f", mean_plaq, error_plaq))
+    write_log(sprintf("analyze_plaquette: τ_int = %.2f ± %.2f", tauint, dtauint))
+    write_log(sprintf("analyze_plaquette: n_eff = %.1f", n_eff))
 
-  # Plot 1: Full timeseries (takes full width)
-  par(mar = c(4, 4, 3, 2))
-  plot(timeseries_dat$t, timeseries_dat$y,
-    type = "l", col = "steelblue",
-    xlab = "HMC Step", ylab = "Plaquette",
-    main = "Plaquette Timeseries (Full)"
+    # Determine bootstrap parameters based on τ_int
+    boot_R <- if (tauint > 10) 500 else 400
+    boot_l <- max(1, floor(tauint / 2))
+
+    write_log(sprintf("analyze_plaquette: using boot.R=%d, boot.l=%d based on τ_int", boot_R, boot_l))
+  } else {
+    # Fallback if uwerr fails
+    write_log("analyze_plaquette: uwerr failed, using default bootstrap parameters")
+    boot_R <- 400
+    boot_l <- 2
+    mean_plaq <- mean(analysis_data)
+    error_plaq <- sd(analysis_data) / sqrt(length(analysis_data))
+    tauint <- NA
+    dtauint <- NA
+    n_eff <- NA
+  }
+
+  # 2. Bootstrap analysis with plotting
+  write_log("analyze_plaquette: running bootstrap.analysis")
+  # Note: bootstrap.analysis with pl=TRUE creates its own plot output
+  # We need to redirect it to a PDF file
+  pdf_file <- file.path(directory, "bootstrap_plaquette.pdf")
+  pdf(pdf_file, width = 10, height = 8)
+  bootstrap_results <- hadron::bootstrap.analysis(
+    plaquette_data$plaquette,
+    skip = skip_steps,
+    boot.R = boot_R,
+    boot.l = boot_l,
+    pl = TRUE
   )
-
-  # Mark detected thermalization point
-  abline(v = plaquette_data$step[thermalization_idx], col = "orange", lty = 2, lwd = 2)
-
-  # Add error band if uwerr succeeded
-  if (!is.null(uw_result)) {
-    # Highlight the analysis region
-    if (skip_steps > 0) {
-      abline(v = plaquette_data$step[stat_start], col = "red", lty = 2)
-    }
-    rect(
-      xleft = plaquette_data$step[stat_start],
-      xright = plaquette_data$step[stat_end],
-      ytop = uw_result$value + uw_result$dvalue,
-      ybottom = uw_result$value - uw_result$dvalue,
-      border = NA, col = rgb(0.6, 0, 0, 0.3)
-    )
-    # abline(h = uw_result$value, col = "red", lwd = 2)
-
-    # Add legend with result
-    legend("topright",
-      legend = c(
-        sprintf("Mean = %.6f +/- %.6f", uw_result$value, uw_result$dvalue),
-        sprintf("tau_int = %.2f +/- %.2f", uw_result$tauint, uw_result$dtauint),
-        sprintf("Detected therm: step %d", plaquette_data$step[thermalization_idx])
-      ),
-      col = c("red", "red", "orange"),
-      lty = c(NA, NA, 2),
-      lwd = c(NA, NA, 2),
-      bty = "n"
-    )
-  } else {
-    # Even without uwerr, show thermalization
-    legend("topright",
-      legend = sprintf("Detected therm: step %d", plaquette_data$step[thermalization_idx]),
-      col = "orange",
-      lty = 2,
-      lwd = 2,
-      bty = "n"
-    )
-  }
-
-  # Plot 2: Timeseries after thermalization (takes full width)
-  par(mar = c(4, 4, 3, 2))
-
-  # Prepare data after detected thermalization
-  thermalized_data <- plaquette_data[thermalization_idx:nrow(plaquette_data), ]
-
-  plot(thermalized_data$step, thermalized_data$plaquette,
-    type = "l", col = "steelblue",
-    xlab = "HMC Step", ylab = "Plaquette",
-    main = sprintf(
-      "Plaquette Timeseries (After Thermalization, from step %d)",
-      plaquette_data$step[thermalization_idx]
-    )
-  )
-
-  # Add error band if uwerr succeeded
-  if (!is.null(uw_result)) {
-    # Show the analysis region used (if different from detected thermalization)
-    if (skip_steps > 0 && stat_start > thermalization_idx) {
-      abline(v = plaquette_data$step[stat_start], col = "red", lty = 2)
-    }
-
-    # Add horizontal line at mean
-    abline(h = uw_result$value, col = "red", lwd = 2)
-
-    # Add error band
-    rect(
-      xleft = par("usr")[1],
-      xright = par("usr")[2],
-      ytop = uw_result$value + uw_result$dvalue,
-      ybottom = uw_result$value - uw_result$dvalue,
-      border = NA, col = rgb(0.6, 0, 0, 0.2)
-    )
-
-    # Add legend
-    legend("topright",
-      legend = c(
-        sprintf("Mean = %.6f +/- %.6f", uw_result$value, uw_result$dvalue),
-        sprintf("N_measurements = %d", length(analysis_data))
-      ),
-      col = c("red", NA),
-      lty = c(1, NA),
-      lwd = c(2, NA),
-      bty = "n"
-    )
-  }
-
-  # Plot 3: Histogram of analysis region (30 bins based on thermalized data)
-  par(mar = c(4, 4, 3, 2))
-  if (!is.null(uw_result)) {
-    # Calculate bin width to get exactly 30 bins for the thermalized data
-    data_range <- range(thermalized_data$plaquette)
-    bin_width <- diff(data_range) / 30
-    breaks <- seq(data_range[1], data_range[2], by = bin_width)
-
-    hist(thermalized_data$plaquette,
-      breaks = breaks, col = "lightblue",
-      xlab = "Plaquette", main = "Histogram (after thermalization, 30 bins)",
-      freq = TRUE
-    )
-    abline(v = uw_result$value, col = "red", lwd = 2)
-    abline(
-      v = c(uw_result$value - uw_result$dvalue, uw_result$value + uw_result$dvalue),
-      col = "red", lty = 2
-    )
-  } else {
-    # Calculate bin width to get exactly 30 bins
-    data_range <- range(thermalized_data$plaquette)
-    bin_width <- diff(data_range) / 30
-    breaks <- seq(data_range[1], data_range[2], by = bin_width)
-
-    hist(thermalized_data$plaquette,
-      breaks = breaks, col = "lightblue",
-      xlab = "Plaquette", main = "Histogram (after thermalization, 30 bins)",
-      freq = TRUE
-    )
-  }
-
-  # Plot 4: uwerr summary plot
-  par(mar = c(4, 4, 3, 2))
-  if (!is.null(uw_result)) {
-    plot(uw_result, main = "Autocorrelation Analysis")
-  } else {
-    plot.new()
-    text(0.5, 0.5, "uwerr analysis failed", cex = 1.5)
-  }
-
   dev.off()
+  write_log(paste0("analyze_plaquette: bootstrap plot saved to ", pdf_file))
 
-  # Save summary to text file
-  summary_file <- file.path(directory, "plaquette_summary.txt")
-  cat("Plaquette Analysis Summary\n", file = summary_file)
-  cat("==========================\n\n", file = summary_file, append = TRUE)
-  cat(sprintf("Total measurements: %d\n", n_total), file = summary_file, append = TRUE)
-  cat(sprintf("Used for analysis: %d\n\n", length(analysis_data)), file = summary_file, append = TRUE)
-
-  # Write thermalization detection info to summary
-  cat(sprintf("\n--- Thermalization Detection ---\n"), file = summary_file, append = TRUE)
-  cat(sprintf("Measurement interval: %d HMC steps\n", measurement_interval), file = summary_file, append = TRUE)
-  cat(sprintf(
-    "Detected plateau at measurement: %d (HMC step %d)\n",
-    thermalization_idx, thermalization_hmc_step
-  ), file = summary_file, append = TRUE)
-  cat(sprintf("Recommended thermalization skip: %d HMC steps\n", recommended_skip), file = summary_file, append = TRUE)
-  cat(sprintf("(Detection method: Running mean stabilization)\n"), file = summary_file, append = TRUE)
-
-  if (!is.null(uw_result)) {
-    cat(sprintf("\nMean value: %.8f +/- %.8f\n", uw_result$value, uw_result$dvalue), file = summary_file, append = TRUE)
-    cat(sprintf(
-      "Integrated autocorrelation time: %.4f +/- %.4f measurements\n",
-      uw_result$tauint, uw_result$dtauint
-    ), file = summary_file, append = TRUE)
-    cat(sprintf(
-      "                                 = %.0f +/- %.0f HMC steps\n",
-      uw_result$tauint * measurement_interval,
-      uw_result$dtauint * measurement_interval
-    ), file = summary_file, append = TRUE)
-    cat(sprintf("Optimal window length: %d\n", uw_result$Wopt), file = summary_file, append = TRUE)
-  } else {
-    cat("\nuwerr analysis failed\n", file = summary_file, append = TRUE)
+  # 3. Save autocorrelation plot if uwerr succeeded
+  if (!is.null(uw)) {
+    write_log("analyze_plaquette: saving uwerr autocorrelation plot")
+    pdf(file.path(directory, "plaquette_autocorr.pdf"), width = 8, height = 6)
+    plot(uw)
+    dev.off()
+    write_log("analyze_plaquette: autocorrelation plot saved")
   }
 
-  # Write to a separate file for easy parsing by analysis.py
-  skip_file <- file.path(directory, "recommended_skip.txt")
-  cat(sprintf("%d\n", recommended_skip), file = skip_file)
+  # 4. Save numerical results to file
+  summary_file <- file.path(directory, "plaquette_summary.txt")
+  write_log(paste0("analyze_plaquette: saving summary to ", summary_file))
 
-  message(sprintf("Plaquette analysis complete. Results saved to %s", directory))
+  cat("Plaquette Analysis Results\n", file = summary_file)
+  cat("===========================\n\n", file = summary_file, append = TRUE)
+  cat(sprintf("Number of measurements: %d\n", nrow(plaquette_data)), file = summary_file, append = TRUE)
+  cat(sprintf("Thermalization steps skipped: %d\n", skip_steps), file = summary_file, append = TRUE)
+  cat(sprintf("Measurements analyzed: %d\n\n", length(analysis_data)), file = summary_file, append = TRUE)
 
-  # Return the recommended skip value (in HMC steps)
-  # This is already calculated above in the thermalization detection section
-  return(recommended_skip)
+  cat(sprintf("Mean plaquette: %.6f ± %.6f\n\n", mean_plaq, error_plaq), file = summary_file, append = TRUE)
+
+  if (!is.na(tauint)) {
+    cat("Autocorrelation Analysis\n", file = summary_file, append = TRUE)
+    cat("------------------------\n", file = summary_file, append = TRUE)
+    cat(sprintf("Integrated autocorrelation time: %.2f ± %.2f\n", tauint, dtauint), file = summary_file, append = TRUE)
+    cat(sprintf("Effective number of independent measurements: %.1f\n", n_eff), file = summary_file, append = TRUE)
+    cat(sprintf("Error enhancement factor: sqrt(2*τ_int) = %.2f\n\n", sqrt(2 * tauint)), file = summary_file, append = TRUE)
+  }
+
+  cat("Bootstrap Parameters\n", file = summary_file, append = TRUE)
+  cat("--------------------\n", file = summary_file, append = TRUE)
+  cat(sprintf("Bootstrap samples: %d\n", boot_R), file = summary_file, append = TRUE)
+  cat(sprintf("Block length: %d\n", boot_l), file = summary_file, append = TRUE)
+
+  write_log("analyze_plaquette: complete")
+
+  return(list(
+    mean = mean_plaq,
+    error = error_plaq,
+    tauint = tauint,
+    n_eff = n_eff,
+    bootstrap_results = bootstrap_results
+  ))
 }
 
 # Main execution
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 1 || length(args) > 2) {
-  stop("Usage: Rscript analysis_plaquette.R <directory> [skip_steps]")
+if (length(args) != 2) {
+  stop("Usage: Rscript analysis_plaquette.R <directory> <skip_steps>")
 }
 directory <- args[1]
 assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
-skip_steps <- if (length(args) >= 2) as.integer(args[2]) else 0
-recommended_skip <- analyze_plaquette(directory, skip_steps = skip_steps)
-cat(sprintf("Recommended skip steps: %d\n", recommended_skip))
+skip_steps <- args[2]
+analyze_plaquette(directory, skip_steps = as.integer(skip_steps))

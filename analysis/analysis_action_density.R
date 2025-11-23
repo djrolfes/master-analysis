@@ -132,12 +132,12 @@ analyze_action_density <- function(directory, skip_initial = 0) {
         }
     )
 
-    # 2) Bootstrap analysis of <E> (mean action density) using uwerr
-    write_log("analyze_action_density: computing bootstrap samples for <E>")
+    # 2) Autocorrelation-corrected error analysis using uwerr
+    write_log("analyze_action_density: computing autocorrelation-corrected errors for <E>")
 
     E_data <- data$action_density
 
-    # Use uwerrprimary to get proper error analysis with bootstrap samples
+    # Use uwerrprimary to get proper error analysis accounting for autocorrelation
     uw_E <- tryCatch(
         {
             hadron::uwerrprimary(E_data, pl = FALSE)
@@ -150,57 +150,34 @@ analyze_action_density <- function(directory, skip_initial = 0) {
 
     mean_E <- uw_E$value
     error_E <- uw_E$dvalue
+    tauint_E <- uw_E$tauint
 
-    write_log(paste0("analyze_action_density: <E> = ", mean_E, " ± ", error_E))
+    write_log(paste0("analyze_action_density: <E> = ", mean_E, " ± ", error_E, " (tau_int = ", tauint_E, ")"))
 
-    # Create bootstrap samples manually from the uwerr result
-    # We'll use the mean and error to generate bootstrap samples
-    # For proper error propagation, we use the hadron bootstrap.cf approach
-    boot_E <- tryCatch(
-        {
-            hadron::bootstrap.cf(E_data, boot.R = 1500, boot.l = 1)
-        },
-        error = function(e) {
-            write_log(paste0("ERROR computing bootstrap.cf for E: ", conditionMessage(e)))
-            # Fall back to simple bootstrap
-            list(t = replicate(1500, mean(sample(E_data, replace = TRUE))))
-        }
-    )
-
-    # 3) Compute t0^2 * <E> for each bootstrap sample
+    # 3) Error propagation for t0^2 * <E>
+    # For simple multiplication f(x) = c*x, error propagates as: error_f = c * error_x
+    # The uwerr error already accounts for autocorrelation, so we can use simple propagation
     write_log(paste0("analyze_action_density: computing t0^2 * <E> where t0 = ", t0))
 
     t0_squared <- t0^2
-
-    # Get bootstrap samples from boot_E
-    # bootstrap.cf returns samples in different formats depending on the cf type
-    if (!is.null(boot_E$t)) {
-        if (is.matrix(boot_E$t)) {
-            E_boot_samples <- boot_E$t[, 1] # If matrix, take first column
-        } else {
-            E_boot_samples <- boot_E$t # If vector, use directly
-        }
-    } else if (!is.null(boot_E$cf)) {
-        # If it's a cf object, extract the mean values
-        E_boot_samples <- boot_E$cf[, 1]
-    } else {
-        # Fallback: create simple bootstrap samples
-        write_log("WARNING: Could not find bootstrap samples, creating manual bootstrap")
-        E_boot_samples <- replicate(1500, mean(sample(E_data, replace = TRUE)))
-    }
-
-    write_log(paste0("analyze_action_density: found ", length(E_boot_samples), " bootstrap samples"))
-
-    # Compute t0^2 * <E> for each bootstrap sample
-    t0_squared_E_samples <- t0_squared * E_boot_samples
-
-    # Compute mean and error of t0^2 * <E>
-    mean_t0_squared_E <- mean(t0_squared_E_samples, na.rm = TRUE)
-    error_t0_squared_E <- sd(t0_squared_E_samples, na.rm = TRUE)
+    mean_t0_squared_E <- t0_squared * mean_E
+    error_t0_squared_E <- t0_squared * error_E
 
     write_log(paste0("analyze_action_density: t0^2 * <E> = ", mean_t0_squared_E, " ± ", error_t0_squared_E))
 
-    # 4) Create histogram of t0^2 * <E>
+    # 4) Generate bootstrap samples for visualization (using parametric bootstrap from uwerr result)
+    # Note: These are for histogram visualization only; the error is already computed correctly above
+    write_log("analyze_action_density: generating bootstrap samples for histogram visualization")
+
+    set.seed(1234) # For reproducibility
+    # Generate samples from normal distribution using uwerr mean and error
+    # This gives a visual representation of the uncertainty
+    E_boot_samples <- rnorm(1500, mean = mean_E, sd = error_E)
+    t0_squared_E_samples <- t0_squared * E_boot_samples
+
+    write_log(paste0("analyze_action_density: histogram samples generated (", length(t0_squared_E_samples), " samples)"))
+
+    # 5) Create histogram of t0^2 * <E>
     write_log("analyze_action_density: creating histogram of t0^2 * <E>")
 
     hist_data <- data.frame(t0_squared_E = t0_squared_E_samples)
@@ -237,7 +214,7 @@ analyze_action_density <- function(directory, skip_initial = 0) {
         }
     )
 
-    # 5) Save results to text file
+    # 6) Save results to text file
     out_txt <- file.path(directory, "action_density_t0_squared_E_results.txt")
     write_log(paste0("analyze_action_density: saving results to ", out_txt))
 
@@ -248,9 +225,10 @@ analyze_action_density <- function(directory, skip_initial = 0) {
             cat(sprintf("Wilson flow time t0: %.6f\n", t0), file = out_txt, append = TRUE)
             cat(sprintf("t0^2: %.6f\n", t0_squared), file = out_txt, append = TRUE)
             cat(sprintf("Number of configurations (after skip): %d\n", nrow(data)), file = out_txt, append = TRUE)
-            cat(sprintf("Number of bootstrap samples: %d\n", length(t0_squared_E_samples)), file = out_txt, append = TRUE)
+            cat(sprintf("Number of bootstrap samples (for histogram): %d\n", length(t0_squared_E_samples)), file = out_txt, append = TRUE)
+            cat(sprintf("Integrated autocorrelation time (tau_int): %.6f\n", tauint_E), file = out_txt, append = TRUE)
             cat("\n", file = out_txt, append = TRUE)
-            cat(sprintf("<E> = %.6f ± %.6f\n", mean_E, error_E), file = out_txt, append = TRUE)
+            cat(sprintf("<E> = %.6f ± %.6f (error includes autocorrelation)\n", mean_E, error_E), file = out_txt, append = TRUE)
             cat(sprintf("t0^2 * <E> = %.6f ± %.6f\n", mean_t0_squared_E, error_t0_squared_E), file = out_txt, append = TRUE)
             write_log("analyze_action_density: results saved to text file")
         },
@@ -259,8 +237,8 @@ analyze_action_density <- function(directory, skip_initial = 0) {
         }
     )
 
-    # 6) Use already computed autocorrelation time from uwerr
-    write_log("analyze_action_density: extracting autocorrelation results")
+    # 7) Save autocorrelation plot and results
+    write_log("analyze_action_density: saving autocorrelation plot and results")
 
     uw <- uw_E # Use the uwerr result from earlier
 
@@ -268,7 +246,8 @@ analyze_action_density <- function(directory, skip_initial = 0) {
         tauint <- if (!is.null(uw$tauint)) uw$tauint else NA
         dtauint <- if (!is.null(uw$dtauint)) uw$dtauint else NA
 
-        write_log(paste0("analyze_action_density: uwerr results - tauint=", tauint, ", dtauint=", dtauint))
+        n_eff <- nrow(data) / (2 * tauint) # Effective number of independent measurements
+        write_log(paste0("analyze_action_density: uwerr results - tauint=", tauint, ", dtauint=", dtauint, ", n_eff=", n_eff))
 
         # Save the uwerr plot to PDF
         out_ac_pdf <- file.path(directory, "action_density_autocorr.pdf")
@@ -288,10 +267,12 @@ analyze_action_density <- function(directory, skip_initial = 0) {
         # Append autocorrelation results to text file
         tryCatch(
             {
-                cat("\nAutocorrelation Analysis\n", file = out_txt, append = TRUE)
-                cat("========================\n", file = out_txt, append = TRUE)
-                cat(sprintf("uwerr_tauint: %s\n", as.character(tauint)), file = out_txt, append = TRUE)
-                cat(sprintf("uwerr_dtauint: %s\n", as.character(dtauint)), file = out_txt, append = TRUE)
+                cat("\nDetailed Autocorrelation Analysis\n", file = out_txt, append = TRUE)
+                cat("==================================\n", file = out_txt, append = TRUE)
+                cat(sprintf("Integrated autocorrelation time: %.6f ± %.6f\n", tauint, dtauint), file = out_txt, append = TRUE)
+                cat(sprintf("Effective number of independent measurements: %.1f\n", n_eff), file = out_txt, append = TRUE)
+                cat(sprintf("Error enhancement factor: sqrt(2*tau_int) = %.3f\n", sqrt(2 * tauint)), file = out_txt, append = TRUE)
+                cat("\nNote: Errors above already include autocorrelation correction via uwerr.\n", file = out_txt, append = TRUE)
                 write_log("analyze_action_density: autocorrelation results written to text file")
             },
             error = function(e) {

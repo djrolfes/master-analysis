@@ -172,10 +172,11 @@ read_ptbc_simulation_log <- function(directory) {
     parts <- strsplit(line, ", ")[[1]]
     list(
       step = as.integer(parts[1]),
-      swap_start = as.integer(parts[2]),
-      accepts = list(parse_vector(parts[3])),
-      delta_H_swap = list(parse_vector(parts[4])),
-      defects = list(parse_vector(parts[5]))
+      accepts = list(parse_vector(parts[2])),
+      delta_H_swap = list(parse_vector(parts[3])),
+      ascending = as.integer(parts[4]),
+      defects = list(parse_vector(parts[5])),
+      prev_defects = list(parse_vector(parts[6]))
     )
   })
 

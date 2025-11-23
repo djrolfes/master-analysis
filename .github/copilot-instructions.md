@@ -180,7 +180,45 @@ tau <- acf_result$tau
 
 **5. Correlation Function Bootstrap**
 
-`bootstrap.cf(cf, boot.R = 400, boot.l = 2, seed = 1234, sim = "geom", endcorr = TRUE)`
+`**`bootstrap.cf(cf, boot.R = 400, boot.l = 2, seed = 1234, sim = "geom", endcorr = TRUE)`**
+- **Purpose**: Bootstrap entire correlation function objects (for multi-time analysis)
+- **Usage**: When analyzing correlation functions C(t) across multiple time slices
+- **CRITICAL**: `bootstrap.cf()` requires a `cf` object (correlation function), NOT a numeric vector
+- **Parameters**:
+  - `cf`: Correlation function object (class `cf` with subclass `cf_orig`)
+  - `boot.R`: Number of bootstrap samples
+  - `boot.l`: Block length
+  - `seed`: RNG seed for reproducibility
+  - `sim`: `"geom"` (geometric) or `"fixed"` (fixed block)
+  - `endcorr`: End corrections for fixed blocks
+- **Returns**: Enhanced `cf` object with:
+  - `$cf.tsboot`: Bootstrap samples (from `tsboot()`)
+  - `$cf0`: Original average
+  - `$tsboot.se`: Bootstrap standard errors
+  - `$boot.R`, `$boot.l`, `$seed`: Parameters used
+- **Common Mistake**: DO NOT use `bootstrap.cf()` on scalar observables (numeric vectors)
+  - ❌ WRONG: `boot_E <- bootstrap.cf(E_data, boot.R=1500)` where `E_data` is numeric vector
+  - ✅ CORRECT: Use `uwerr()` for scalar observables, which provides autocorrelation-corrected errors directly
+  - For error propagation: If `y = f(x)` and `uw <- uwerr(x)`, then `error_y = |df/dx| * uw$dvalue`
+- **Example (correct usage for correlation functions)**:
+```r
+# For time-dependent correlators C(t)
+cf_obj <- create_cf_object(correlator_matrix)  # Must be cf object
+cf_boot <- bootstrap.cf(cf_obj, boot.R = 1500, boot.l = 1)
+# Access bootstrap samples: cf_boot$cf.tsboot$t
+```
+- **Example (scalar observable error propagation)**:
+```r
+# For scalar observable like action density
+E_data <- data$action_density
+uw_E <- uwerrprimary(E_data, pl=FALSE)
+mean_E <- uw_E$value
+error_E <- uw_E$dvalue  # Already accounts for autocorrelation!
+
+# Error propagation for t0^2 * E
+t0_squared_E <- t0^2 * mean_E
+error_t0_squared_E <- t0^2 * error_E  # Simple propagation
+````
 - **Purpose**: Bootstrap entire correlation function objects (for multi-time analysis)
 - **Usage**: When analyzing correlation functions C(t) across multiple time slices
 - **Parameters**:

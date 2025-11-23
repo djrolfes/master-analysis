@@ -12,7 +12,7 @@ write_log <- function(msg) {
   cat(entry, file = logfile, append = TRUE)
 }
 
-analyze_wilsonflow_improv <- function(directory, filename = "action_densities_clover_cumulative.txt", n_boot = 200) {
+analyze_wilsonflow_improv <- function(directory, filename = "action_densities_clover_cumulative.txt", n_boot = 400) {
   assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
   write_log(paste0("analyze_wilsonflow_improv: start dir=", directory, " file=", filename, " n_boot=", n_boot))
 
