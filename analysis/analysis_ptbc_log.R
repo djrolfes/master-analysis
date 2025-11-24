@@ -88,9 +88,9 @@ analyze_acceptance <- function(directory, data) {
   num_defects <- length(defects_full)
   Replica_asc_vec <- defects_full[seq_len(num_defects - 1)]
   Replica_desc_vec <- rev(rev(defects_full)[seq_len(num_defects - 1)])
-  rep_sorted <- defects_full[seq_len(num_defects - 1)]
+  rep_sorted <- defects_full[seq_len(num_defects)]
 
-  n <- length(rep_sorted)
+  n <- length(rep_sorted) - 1
 
   # Ensure mean/error vectors are numeric and handle differing lengths
   n_asc <- length(mean_attempts_per_replica_asc)
@@ -116,7 +116,6 @@ analyze_acceptance <- function(directory, data) {
   plot_data <- data.frame(
     Replica_asc = Replica_asc_vec,
     Replica_desc = Replica_desc_vec,
-    Replica = rep_sorted,
     Mean_asc = Mean_asc_vec,
     Error_asc = Error_asc_vec,
     Mean_desc = rev(Mean_desc_vec),
@@ -129,22 +128,59 @@ analyze_acceptance <- function(directory, data) {
 
   # Generate and save the plot
   eps <- 0.005
-  p <- ggplot(plot_data, aes(x = Replica_asc - eps, y = Mean_asc)) +
-    geom_point(size = 1) +
-    geom_errorbar(aes(ymin = Mean_asc - Error_asc, ymax = Mean_asc + Error_asc), width = 0.03) +
+  x_min <- min(rep_sorted, na.rm = TRUE)
+  x_max <- max(rep_sorted, na.rm = TRUE)
+
+  asc_mean <- as.numeric(weighted_results_asc["mean"])
+  asc_err <- as.numeric(weighted_results_asc["error"])
+  desc_mean <- as.numeric(weighted_results_desc["mean"])
+  desc_err <- as.numeric(weighted_results_desc["error"])
+
+  p <- ggplot(plot_data, aes(x = Replica_asc, y = Mean_asc)) +
+    # ascending points and errors (shifted left)
+    geom_point(aes(x = Replica_asc - eps, y = Mean_asc), size = 1) +
+    geom_errorbar(aes(x = Replica_asc - eps, ymin = Mean_asc - Error_asc, ymax = Mean_asc + Error_asc), width = 0.03) +
+
+    # descending points and errors (shifted right)
     geom_point(aes(x = Replica_desc + eps, y = Mean_desc), size = 1, color = "blue") +
     geom_errorbar(aes(x = Replica_desc + eps, ymin = Mean_desc - Error_desc, ymax = Mean_desc + Error_desc), width = 0.03, color = "blue") +
-    annotate("text", x = max(plot_data$Replica) - 0.1, y = weighted_results_asc["mean"] + 0.05, label = sprintf("Weighted Mean ascending: %.3f ± %.3f", weighted_results_asc["mean"], weighted_results_asc["error"]), color = "red") +
-    geom_hline(yintercept = weighted_results_asc["mean"], linetype = "dashed", color = "red") +
-    geom_ribbon(aes(ymin = weighted_results_asc["mean"] - weighted_results_asc["error"], ymax = weighted_results_asc["mean"] + weighted_results_asc["error"]), fill = "red", alpha = 0.1) +
-    annotate("text", x = max(plot_data$Replica) - 0.1, y = weighted_results_desc["mean"] + 0.05, label = sprintf("Weighted Mean descending: %.3f ± %.3f", weighted_results_desc["mean"], weighted_results_desc["error"]), color = "blue") +
-    geom_hline(yintercept = weighted_results_desc["mean"], linetype = "dashed", color = "blue") +
-    geom_ribbon(aes(ymin = weighted_results_desc["mean"] - weighted_results_desc["error"], ymax = weighted_results_desc["mean"] + weighted_results_desc["error"]), fill = "blue", alpha = 0.1) +
+
+    # full-span shaded bands using annotate (covers the full Replica x-range)
+    annotate("rect",
+      xmin = x_min, xmax = x_max,
+      ymin = asc_mean - asc_err, ymax = asc_mean + asc_err,
+      fill = "red", alpha = 0.1
+    ) +
+    annotate("rect",
+      xmin = x_min, xmax = x_max,
+      ymin = desc_mean - desc_err, ymax = desc_mean + desc_err,
+      fill = "blue", alpha = 0.1
+    ) +
+
+    # horizontal lines for the weighted means (span full width by using yintercept param)
+    geom_hline(yintercept = asc_mean, linetype = "dashed", color = "red") +
+    geom_hline(yintercept = desc_mean, linetype = "dashed", color = "blue") +
+
+    # labels with numeric formatting
+    # annotate("text",
+    #  x = x_max - 0.1 * (x_max - x_min), y = asc_mean + 0.05,
+    #  label = sprintf("Weighted Mean ascending: %.3f ± %.3f", asc_mean, asc_err), color = "red", hjust = 1
+    # ) +
+    # annotate("text",
+    #  x = x_max - 0.1 * (x_max - x_min), y = desc_mean + 0.05,
+    #  label = sprintf("Weighted Mean descending: %.3f ± %.3f", desc_mean, desc_err), color = "blue", hjust = 1
+    # ) +
     labs(
       title = "Acceptance Rate per Replica",
       x = "Replica / Defect",
       y = "Acceptance Rate"
-    )
+    ) +
+    theme_minimal()
+
+  write_log(sprintf(
+    "Weighted Mean Acceptance Rates: ascending = %.3f ± %.3f, descending = %.3f ± %.3f",
+    asc_mean, asc_err, desc_mean, desc_err
+  ))
 
   ggsave(file.path(directory, "acceptance_by_replica.pdf"), plot = p, width = 8, height = 6)
   write_log("Acceptance analysis plot saved to acceptance_by_replica.pdf")
