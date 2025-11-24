@@ -81,10 +81,14 @@ analyze_acceptance <- function(directory, data) {
     Error = err_attempts_per_replica
   )
 
+  weighted_results <- weighted_mean_errors(plot_data$Mean, plot_data$Error)
+
   # Generate and save the plot
   p <- ggplot(plot_data, aes(x = Replica, y = Mean)) +
     geom_point(size = 3) +
     geom_errorbar(aes(ymin = Mean - Error, ymax = Mean + Error), width = 0.05) +
+    geom_hline(yintercept = weighted_results["mean"], linetype = "dashed", color = "red") +
+    geom_ribbon(aes(ymin = weighted_results["mean"] - weighted_results["error"], ymax = weighted_results["mean"] + weighted_results["error"]), fill = "red", alpha = 0.1) +
     labs(
       title = "Acceptance Rate per Replica",
       x = "Replica / Defect",
@@ -97,6 +101,13 @@ analyze_acceptance <- function(directory, data) {
   return(plot_data)
 }
 
+weighted_mean_errors <- function(values, errors) {
+  weights <- 1 / (errors^2)
+  normalized_weights <- weights / sum(weights)
+  weighted_mean <- sum(values * normalized_weights)
+  weighted_error <- errors %*% normalized_weights
+  return(c(mean = weighted_mean, error = weighted_error))
+}
 
 # Main analysis function for PTBC log
 analyze_ptbc_log <- function(directory, skip_initial = 0) {
