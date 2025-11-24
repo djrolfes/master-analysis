@@ -190,9 +190,8 @@ analyze_acceptance <- function(directory, data) {
 
 weighted_mean_errors <- function(values, errors) {
   weights <- 1 / (errors^2)
-  normalized_weights <- weights / sum(weights)
-  weighted_mean <- sum(values * normalized_weights)
-  weighted_error <- errors %*% normalized_weights
+  weighted_error <- sqrt(1 / sum(weights))
+  weighted_mean <- sum(values * weights) * weighted_error^2
   return(c(mean = weighted_mean, error = weighted_error))
 }
 
