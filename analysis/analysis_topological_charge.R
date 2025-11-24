@@ -193,8 +193,9 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   write_log(paste0("analyze_topological_charge: uwerr results - tauint=", tauint, ", dtauint=", dtauint))
 
-  # Save the uwerr plot to PDF (plot method for uwerr)
-  out_ac_pdf <- file.path(directory, "topological_charge_autocorr.pdf")
+  # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
+  autocorr_filename <- "topological_charge_autocorr_Q.pdf"
+  out_ac_pdf <- file.path(directory, autocorr_filename)
   write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
   tryCatch(
     {
@@ -210,6 +211,21 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   # Save summary to a small text file
   summary_file <- file.path(directory, "topological_charge_autocorr_summary.txt")
+  # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
+  autocorr_filename <- "topological_charge_autocorr_Q.pdf"
+  out_ac_pdf <- file.path(directory, autocorr_filename)
+  write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
+  tryCatch(
+    {
+      pdf(out_ac_pdf, width = 8, height = 6)
+      plot(uw)
+      dev.off()
+      write_log("analyze_topological_charge: autocorr plot saved")
+    },
+    error = function(e) {
+      write_log(paste0("ERROR saving autocorr plot: ", conditionMessage(e)))
+    }
+  )
   write_log(paste0("analyze_topological_charge: writing summary to ", summary_file))
 
   # Compute ACF using computeacf (with safe wrapper for cluster compatibility)
@@ -275,6 +291,24 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       return(NULL)
     }
   )
+
+
+  # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
+  autocorr_filename <- "topological_charge_autocorr_Q_rounded.pdf"
+  out_ac_pdf <- file.path(directory, autocorr_filename)
+  write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
+  tryCatch(
+    {
+      pdf(out_ac_pdf, width = 8, height = 6)
+      plot(uw_rounded)
+      dev.off()
+      write_log("analyze_topological_charge Q rounded: autocorr plot saved")
+    },
+    error = function(e) {
+      write_log(paste0("ERROR saving autocorr plot: ", conditionMessage(e)))
+    }
+  )
+
   tauint_rounded <- if (!is.null(uw_rounded)) uw_rounded$tauint else NA
   dtauint_rounded <- if (!is.null(uw_rounded)) uw_rounded$dtauint else NA
   write_log(paste0("analyze_topological_charge: rounded uwerr results - tauint=", tauint_rounded, ", dtauint=", dtauint_rounded))
@@ -338,6 +372,23 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       return(NULL)
     }
   )
+
+  # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
+  autocorr_filename <- "topological_charge_autocorr_Q_squared.pdf"
+  out_ac_pdf <- file.path(directory, autocorr_filename)
+  write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
+  tryCatch(
+    {
+      pdf(out_ac_pdf, width = 8, height = 6)
+      plot(uw_q_squared)
+      dev.off()
+      write_log("analyze_topological_charge Q squared: autocorr plot saved")
+    },
+    error = function(e) {
+      write_log(paste0("ERROR saving autocorr plot: ", conditionMessage(e)))
+    }
+  )
+
   tauint_q_squared <- if (!is.null(uw_q_squared)) uw_q_squared$tauint else NA
   dtauint_q_squared <- if (!is.null(uw_q_squared)) uw_q_squared$dtauint else NA
   write_log(paste0("analyze_topological_charge: Q^2 uwerr results - tauint=", tauint_q_squared, ", dtauint=", dtauint_q_squared))
@@ -401,6 +452,24 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       return(NULL)
     }
   )
+
+  # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
+  autocorr_filename <- "topological_charge_autocorr_rounded_Q_squared.pdf"
+  out_ac_pdf <- file.path(directory, autocorr_filename)
+  write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
+  tryCatch(
+    {
+      pdf(out_ac_pdf, width = 8, height = 6)
+      plot(uw_rounded_q_squared)
+      dev.off()
+      write_log("analyze_topological_charge rounded Q squared: autocorr plot saved")
+    },
+    error = function(e) {
+      write_log(paste0("ERROR saving autocorr plot: ", conditionMessage(e)))
+    }
+  )
+
+
   tauint_rounded_q_squared <- if (!is.null(uw_rounded_q_squared)) uw_rounded_q_squared$tauint else NA
   dtauint_rounded_q_squared <- if (!is.null(uw_rounded_q_squared)) uw_rounded_q_squared$dtauint else NA
   write_log(paste0("analyze_topological_charge: Q^2 from rounded uwerr results - tauint=", tauint_rounded_q_squared, ", dtauint=", dtauint_rounded_q_squared))
