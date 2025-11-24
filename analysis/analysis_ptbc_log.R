@@ -23,7 +23,8 @@ analyze_acceptance <- function(directory, data) {
 
   # Store the normalized accepts back into a local variable for the rest of the function
   # (the later code will use data$accepts and expects the canonical ordering)
-  swap_attempts_per_replica <- list()
+  swap_attempts_per_replica_asc <- list()
+  swap_attempts_per_replica_desc <- list()
   total_accepts_per_replica <- vector("numeric", length = length(data$defects[[1]]))
   for (i in seq_len(nrow(data))) {
     row <- data[i, ]
@@ -38,26 +39,33 @@ analyze_acceptance <- function(directory, data) {
 
     for (j in seq_along(accepts)) {
       replica_index <- j
-      partner_index <- j + 1
 
-      if (length(swap_attempts_per_replica) < replica_index) {
-        swap_attempts_per_replica[[replica_index]] <- c(as.integer(accepts[j]))
+      if (ascending) {
+        if (length(swap_attempts_per_replica_asc) < replica_index) {
+          swap_attempts_per_replica_asc[[replica_index]] <- c(as.integer(accepts[j]))
+        } else {
+          swap_attempts_per_replica_asc[[replica_index]] <- append(swap_attempts_per_replica_asc[[replica_index]], as.integer(accepts[j]))
+        }
       } else {
-        swap_attempts_per_replica[[replica_index]] <- append(swap_attempts_per_replica[[replica_index]], as.integer(accepts[j]))
+        if (length(swap_attempts_per_replica_desc) < replica_index) {
+          swap_attempts_per_replica_desc[[replica_index]] <- c(as.integer(accepts[j]))
+        } else {
+          swap_attempts_per_replica_desc[[replica_index]] <- append(swap_attempts_per_replica_desc[[replica_index]], as.integer(accepts[j]))
+        }
       }
 
-      if (length(swap_attempts_per_replica) < partner_index) {
-        swap_attempts_per_replica[[partner_index]] <- c(as.integer(accepts[j]))
-      } else {
-        swap_attempts_per_replica[[partner_index]] <- append(swap_attempts_per_replica[[partner_index]], as.integer(accepts[j]))
-      }
+
       total_accepts_per_replica[replica_index] <- total_accepts_per_replica[replica_index] + accepts[j]
-      total_accepts_per_replica[partner_index] <- total_accepts_per_replica[partner_index] + accepts[j]
     }
   }
-  print(length(swap_attempts_per_replica))
-  mean_attempts_per_replica <- sapply(swap_attempts_per_replica, mean)
-  err_attempts_per_replica <- sapply(swap_attempts_per_replica, function(x) {
+  mean_attempts_per_replica_asc <- sapply(swap_attempts_per_replica_asc, mean)
+  err_attempts_per_replica_asc <- sapply(swap_attempts_per_replica_asc, function(x) {
+    hadron::bootstrap.meanerror(x, R = 400)
+  })
+
+  swap_attempts_per_replica_desc <- rev(swap_attempts_per_replica_desc)
+  mean_attempts_per_replica_desc <- sapply(swap_attempts_per_replica_desc, mean)
+  err_attempts_per_replica_desc <- sapply(swap_attempts_per_replica_desc, function(x) {
     hadron::bootstrap.meanerror(x, R = 400)
   })
   # print(head(swap_attempts_per_replica))
@@ -75,20 +83,63 @@ analyze_acceptance <- function(directory, data) {
   # })
 
   # Prepare data for plotting
+  # Prepare data for plotting: use only the first (N-1) defects to match swap pairs
+  defects_full <- sort(data$defects[[1]])
+  num_defects <- length(defects_full)
+  Replica_asc_vec <- defects_full[seq_len(num_defects - 1)]
+  Replica_desc_vec <- rev(rev(defects_full)[seq_len(num_defects - 1)])
+  rep_sorted <- defects_full[seq_len(num_defects - 1)]
+
+  n <- length(rep_sorted)
+
+  # Ensure mean/error vectors are numeric and handle differing lengths
+  n_asc <- length(mean_attempts_per_replica_asc)
+  n_desc <- length(mean_attempts_per_replica_desc)
+
+  Mean_asc_vec <- rep(NA_real_, n)
+  Error_asc_vec <- rep(NA_real_, n)
+  Mean_desc_vec <- rep(NA_real_, n)
+  Error_desc_vec <- rep(NA_real_, n)
+
+  if (n_asc > 0 && n > 0) {
+    idx_asc <- seq_len(n_asc)
+    Mean_asc_vec[idx_asc] <- as.numeric(mean_attempts_per_replica_asc[seq_len(n_asc)])
+    Error_asc_vec[idx_asc] <- as.numeric(err_attempts_per_replica_asc[seq_len(n_asc)])
+  }
+
+  if (n_desc > 0 && n > 0) {
+    idx_desc <- seq_len(n_desc)
+    Mean_desc_vec[idx_desc] <- as.numeric(mean_attempts_per_replica_desc[seq_len(n_desc)])
+    Error_desc_vec[idx_desc] <- as.numeric(err_attempts_per_replica_desc[seq_len(n_desc)])
+  }
+
   plot_data <- data.frame(
-    Replica = sort(data$defects[[1]]),
-    Mean = mean_attempts_per_replica,
-    Error = err_attempts_per_replica
+    Replica_asc = Replica_asc_vec,
+    Replica_desc = Replica_desc_vec,
+    Replica = rep_sorted,
+    Mean_asc = Mean_asc_vec,
+    Error_asc = Error_asc_vec,
+    Mean_desc = rev(Mean_desc_vec),
+    Error_desc = rev(Error_desc_vec),
+    stringsAsFactors = FALSE
   )
 
-  weighted_results <- weighted_mean_errors(plot_data$Mean, plot_data$Error)
+  weighted_results_asc <- weighted_mean_errors(plot_data$Mean_asc, plot_data$Error_asc)
+  weighted_results_desc <- weighted_mean_errors(plot_data$Mean_desc, plot_data$Error_desc)
 
   # Generate and save the plot
-  p <- ggplot(plot_data, aes(x = Replica, y = Mean)) +
-    geom_point(size = 3) +
-    geom_errorbar(aes(ymin = Mean - Error, ymax = Mean + Error), width = 0.05) +
-    geom_hline(yintercept = weighted_results["mean"], linetype = "dashed", color = "red") +
-    geom_ribbon(aes(ymin = weighted_results["mean"] - weighted_results["error"], ymax = weighted_results["mean"] + weighted_results["error"]), fill = "red", alpha = 0.1) +
+  eps <- 0.005
+  p <- ggplot(plot_data, aes(x = Replica_asc - eps, y = Mean_asc)) +
+    geom_point(size = 1) +
+    geom_errorbar(aes(ymin = Mean_asc - Error_asc, ymax = Mean_asc + Error_asc), width = 0.03) +
+    geom_point(aes(x = Replica_desc + eps, y = Mean_desc), size = 1, color = "blue") +
+    geom_errorbar(aes(x = Replica_desc + eps, ymin = Mean_desc - Error_desc, ymax = Mean_desc + Error_desc), width = 0.03, color = "blue") +
+    annotate("text", x = max(plot_data$Replica) - 0.1, y = weighted_results_asc["mean"] + 0.05, label = sprintf("Weighted Mean ascending: %.3f ± %.3f", weighted_results_asc["mean"], weighted_results_asc["error"]), color = "red") +
+    geom_hline(yintercept = weighted_results_asc["mean"], linetype = "dashed", color = "red") +
+    geom_ribbon(aes(ymin = weighted_results_asc["mean"] - weighted_results_asc["error"], ymax = weighted_results_asc["mean"] + weighted_results_asc["error"]), fill = "red", alpha = 0.1) +
+    annotate("text", x = max(plot_data$Replica) - 0.1, y = weighted_results_desc["mean"] + 0.05, label = sprintf("Weighted Mean descending: %.3f ± %.3f", weighted_results_desc["mean"], weighted_results_desc["error"]), color = "blue") +
+    geom_hline(yintercept = weighted_results_desc["mean"], linetype = "dashed", color = "blue") +
+    geom_ribbon(aes(ymin = weighted_results_desc["mean"] - weighted_results_desc["error"], ymax = weighted_results_desc["mean"] + weighted_results_desc["error"]), fill = "blue", alpha = 0.1) +
     labs(
       title = "Acceptance Rate per Replica",
       x = "Replica / Defect",
