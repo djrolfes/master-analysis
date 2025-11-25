@@ -12,6 +12,109 @@ write_log <- function(msg) {
   cat(entry, file = logfile, append = TRUE)
 }
 
+# Function to compute per-defect acceptance from rank log files
+compute_per_defect_acceptance <- function(directory, data) {
+  write_log("Computing per-defect acceptance from rank log files...")
+
+  # Get unique defect values (sorted)
+  defects_full <- sort(data$defects[[1]])
+  num_defects <- length(defects_full)
+  num_steps <- nrow(data)
+
+  write_log(sprintf("Processing %d steps with %d defects/ranks", num_steps, num_defects))
+
+  # Pre-read all rank files to avoid repeated file I/O
+  write_log("Pre-reading all rank log files...")
+  rank_data_cache <- list()
+  for (rank in seq_len(num_defects) - 1) {
+    rank_file <- file.path(directory, sprintf("simulation_log.rank%d.txt", rank))
+    if (file.exists(rank_file)) {
+      rank_data_cache[[as.character(rank)]] <- read_data_file(rank_file)
+      write_log(sprintf("Loaded rank %d (%d rows)", rank, nrow(rank_data_cache[[as.character(rank)]])))
+    } else {
+      write_log(sprintf("Warning: Rank file not found: %s", rank_file))
+    }
+  }
+  write_log("Finished pre-reading rank files")
+
+  # Initialize list to store accepts for each defect
+  accepts_per_defect <- vector("list", length = num_defects)
+  names(accepts_per_defect) <- as.character(defects_full)
+
+  # For each step in ptbc log
+  progress_interval <- max(1, floor(num_steps / 10))
+  for (i in seq_len(num_steps)) {
+    if (i %% progress_interval == 0) {
+      write_log(sprintf("Processing step %d/%d (%.1f%%)", i, num_steps, 100 * i / num_steps))
+    }
+
+    step <- data$step[i]
+    prev_defects <- unlist(data$prev_defects[i])
+
+    # Perform argsort to determine which rank had which defect value
+    # order() gives the indices that would sort the array
+    rank_order <- order(prev_defects)
+
+    # For each defect value, find which rank had it
+    for (sorted_idx in seq_along(prev_defects)) {
+      # rank_order[sorted_idx] gives the original position (1-indexed)
+      # The rank is this position minus 1 (0-indexed)
+      rank <- rank_order[sorted_idx] - 1
+      defect_value <- prev_defects[rank_order[sorted_idx]]
+
+      # Get cached rank data
+      rank_key <- as.character(rank)
+      if (!rank_key %in% names(rank_data_cache)) {
+        next
+      }
+
+      rank_data <- rank_data_cache[[rank_key]]
+      matching_row <- rank_data[rank_data$step == step, ]
+
+      if (nrow(matching_row) == 1) {
+        accept_value <- matching_row$accept
+        defect_key <- as.character(defect_value)
+
+        if (is.null(accepts_per_defect[[defect_key]])) {
+          accepts_per_defect[[defect_key]] <- c(accept_value)
+        } else {
+          accepts_per_defect[[defect_key]] <- c(accepts_per_defect[[defect_key]], accept_value)
+        }
+      }
+    }
+  }
+
+  write_log("Finished processing all steps")
+
+  # Compute mean and bootstrap errors for each defect
+  mean_per_defect <- numeric(num_defects)
+  err_per_defect <- numeric(num_defects)
+
+  for (i in seq_len(num_defects)) {
+    defect_key <- as.character(defects_full[i])
+    accepts <- accepts_per_defect[[defect_key]]
+
+    if (!is.null(accepts) && length(accepts) > 0) {
+      mean_per_defect[i] <- mean(accepts)
+      err_per_defect[i] <- hadron::bootstrap.meanerror(accepts, R = 400)
+      write_log(sprintf(
+        "Defect %.3f: %d samples, mean = %.4f ± %.4f",
+        defects_full[i], length(accepts), mean_per_defect[i], err_per_defect[i]
+      ))
+    } else {
+      mean_per_defect[i] <- NA
+      err_per_defect[i] <- NA
+      write_log(sprintf("Defect %.3f: No data found", defects_full[i]))
+    }
+  }
+
+  return(list(
+    defects = defects_full,
+    mean = mean_per_defect,
+    error = err_per_defect
+  ))
+}
+
 # Function to analyze acceptance rates
 analyze_acceptance <- function(directory, data) {
   if (nrow(data) == 0) {
@@ -21,169 +124,164 @@ analyze_acceptance <- function(directory, data) {
   num_defects <- length(data$defects[[1]])
   expected_len <- max(0, num_defects - 1)
 
-  # Store the normalized accepts back into a local variable for the rest of the function
-  # (the later code will use data$accepts and expects the canonical ordering)
-  swap_attempts_per_replica_asc <- list()
-  swap_attempts_per_replica_desc <- list()
-  total_accepts_per_replica <- vector("numeric", length = length(data$defects[[1]]))
+  # Compute per-defect acceptance from rank logs
+  per_defect_results <- compute_per_defect_acceptance(directory, data)
+
+  # Collect swap acceptance data per replica (normalized to ascending order)
+  swap_attempts_per_replica <- list()
   for (i in seq_len(nrow(data))) {
     row <- data[i, ]
     ascending <- as.logical(row$ascending)
     accepts <- unlist(row$accepts)
-    sorted_defects <- sort(data$defects[[i]], !ascending)
 
+    # Normalize to ascending order
     if (!is.na(ascending) && !ascending) {
       accepts <- rev(accepts)
     }
 
-
     for (j in seq_along(accepts)) {
       replica_index <- j
-
-      # if (ascending) {
-      if (length(swap_attempts_per_replica_asc) < replica_index) {
-        swap_attempts_per_replica_asc[[replica_index]] <- c(as.integer(accepts[j]))
+      if (length(swap_attempts_per_replica) < replica_index) {
+        swap_attempts_per_replica[[replica_index]] <- c(as.integer(accepts[j]))
       } else {
-        swap_attempts_per_replica_asc[[replica_index]] <- append(swap_attempts_per_replica_asc[[replica_index]], as.integer(accepts[j]))
+        swap_attempts_per_replica[[replica_index]] <- append(swap_attempts_per_replica[[replica_index]], as.integer(accepts[j]))
       }
-      # } else {
-      #  if (length(swap_attempts_per_replica_desc) < replica_index) {
-      #    swap_attempts_per_replica_desc[[replica_index]] <- c(as.integer(accepts[j]))
-      #  } else {
-      #    swap_attempts_per_replica_desc[[replica_index]] <- append(swap_attempts_per_replica_desc[[replica_index]], as.integer(accepts[j]))
-      #  }
-      # }
-
-
-      total_accepts_per_replica[replica_index] <- total_accepts_per_replica[replica_index] + accepts[j]
     }
   }
-  mean_attempts_per_replica_asc <- sapply(swap_attempts_per_replica_asc, mean)
-  err_attempts_per_replica_asc <- sapply(swap_attempts_per_replica_asc, function(x) {
+
+  # Compute mean and bootstrap errors for swap acceptance
+  mean_swap_acceptance <- sapply(swap_attempts_per_replica, mean)
+  err_swap_acceptance <- sapply(swap_attempts_per_replica, function(x) {
     hadron::bootstrap.meanerror(x, R = 400)
   })
 
-  # swap_attempts_per_replica_desc <- rev(swap_attempts_per_replica_desc)
-  # mean_attempts_per_replica_desc <- sapply(swap_attempts_per_replica_desc, mean)
-  # err_attempts_per_replica_desc <- sapply(swap_attempts_per_replica_desc, function(x) {
-  #  hadron::bootstrap.meanerror(x, R = 400)
-  # })
-  # print(head(swap_attempts_per_replica))
-  # acceptance_rates <- total_accepts_per_replica / swap_attempts_per_replica
-
-  # TODO: save the swaps of the replicas into lists and do a bootstrap
-  # accepts_matrix <- do.call(rbind, data$accepts)
-  # Use bootstrap.meanError on each column (replica)
-  # Increased R from 100 to 400 for better error estimates (best practices)
-  # bootstrap_results <- apply(accepts_matrix, 2, function(col) {
-  # bootstrap.meanError is suitable for bootstrapping the mean of a vector
-  #   result <- hadron::bootstrap.meanerror(col, R = 400)
-  # The result is a vector with mean and error
-  #  c(mean = mean(col), error = result)
-  # })
-
-  # Prepare data for plotting
   # Prepare data for plotting: use only the first (N-1) defects to match swap pairs
   defects_full <- sort(data$defects[[1]])
   num_defects <- length(defects_full)
-  Replica_asc_vec <- defects_full[seq_len(num_defects - 1)]
-  Replica_vec <- defects_full[seq_len(num_defects) - 1]
-  # Replica_desc_vec <- rev(rev(defects_full)[seq_len(num_defects - 1)])
   rep_sorted <- defects_full[seq_len(num_defects)]
 
-
-
-  for (i in seq_len(length(Replica_vec))) {
+  # Replica positions are midpoints between adjacent defects for swap acceptance
+  n <- length(rep_sorted) - 1
+  Replica_vec <- numeric(n)
+  for (i in seq_len(n)) {
     Replica_vec[i] <- (rep_sorted[i] + rep_sorted[i + 1]) / 2
   }
 
-
-  n <- length(rep_sorted) - 1
-
   # Ensure mean/error vectors are numeric and handle differing lengths
-  n_asc <- length(mean_attempts_per_replica_asc)
-  # n_desc <- length(mean_attempts_per_replica_desc)
+  n_swap <- length(mean_swap_acceptance)
+  Mean_swap_vec <- rep(NA_real_, n)
+  Error_swap_vec <- rep(NA_real_, n)
 
-  Mean_asc_vec <- rep(NA_real_, n)
-  Error_asc_vec <- rep(NA_real_, n)
-  # Mean_desc_vec <- rep(NA_real_, n)
-  # Error_desc_vec <- rep(NA_real_, n)
-
-  if (n_asc > 0 && n > 0) {
-    idx_asc <- seq_len(n_asc)
-    Mean_asc_vec[idx_asc] <- as.numeric(mean_attempts_per_replica_asc[seq_len(n_asc)])
-    Error_asc_vec[idx_asc] <- as.numeric(err_attempts_per_replica_asc[seq_len(n_asc)])
+  if (n_swap > 0 && n > 0) {
+    idx_swap <- seq_len(min(n_swap, n))
+    Mean_swap_vec[idx_swap] <- as.numeric(mean_swap_acceptance[idx_swap])
+    Error_swap_vec[idx_swap] <- as.numeric(err_swap_acceptance[idx_swap])
   }
 
-  # if (n_desc > 0 && n > 0) {
-  #  idx_desc <- seq_len(n_desc)
-  #  Mean_desc_vec[idx_desc] <- as.numeric(mean_attempts_per_replica_desc[seq_len(n_desc)])
-  #  Error_desc_vec[idx_desc] <- as.numeric(err_attempts_per_replica_desc[seq_len(n_desc)])
-  # }
-
   plot_data <- data.frame(
-    Replica_asc = Replica_vec,
-    # Replica_desc = Replica_desc_vec,
-    Mean_asc = Mean_asc_vec,
-    Error_asc = Error_asc_vec,
-    # Mean_desc = rev(Mean_desc_vec),
-    # Error_desc = rev(Error_desc_vec),
+    Replica = Replica_vec,
+    Mean_swap = Mean_swap_vec,
+    Error_swap = Error_swap_vec,
     stringsAsFactors = FALSE
   )
 
-  weighted_results_asc <- weighted_mean_errors(plot_data$Mean_asc, plot_data$Error_asc)
-  # weighted_results_desc <- weighted_mean_errors(plot_data$Mean_desc, plot_data$Error_desc)
+  # Add per-defect data to plot_data
+  plot_data_defects <- data.frame(
+    Defect = per_defect_results$defects,
+    Mean_defect = per_defect_results$mean,
+    Error_defect = per_defect_results$error,
+    stringsAsFactors = FALSE
+  )
+
+  weighted_results_swap <- weighted_mean_errors(plot_data$Mean_swap, plot_data$Error_swap)
+  weighted_results_defect <- weighted_mean_errors(plot_data_defects$Mean_defect, plot_data_defects$Error_defect)
 
   # Generate and save the plot
-  eps <- 0.005
   x_min <- min(rep_sorted, na.rm = TRUE)
   x_max <- max(rep_sorted, na.rm = TRUE)
 
-  asc_mean <- as.numeric(weighted_results_asc["mean"])
-  asc_err <- as.numeric(weighted_results_asc["error"])
-  # desc_mean <- as.numeric(weighted_results_desc["mean"])
-  # desc_err <- as.numeric(weighted_results_desc["error"])
+  swap_mean <- as.numeric(weighted_results_swap["mean"])
+  swap_err <- as.numeric(weighted_results_swap["error"])
+  defect_mean <- as.numeric(weighted_results_defect["mean"])
+  defect_err <- as.numeric(weighted_results_defect["error"])
 
-  p <- ggplot(plot_data, aes(x = Replica_asc, y = Mean_asc)) +
-    # ascending points and errors (shifted left)
-    geom_point(aes(x = Replica_asc - eps, y = Mean_asc), size = 1) +
-    geom_errorbar(aes(x = Replica_asc - eps, ymin = Mean_asc - Error_asc, ymax = Mean_asc + Error_asc), width = 0.03) +
+  eps <- 0.005 # Small shift to separate overlapping points
 
-    # descending points and errors (shifted right)
-    # geom_point(aes(x = Replica_desc + eps, y = Mean_desc), size = 1, color = "blue") +
-    # geom_errorbar(aes(x = Replica_desc + eps, ymin = Mean_desc - Error_desc, ymax = Mean_desc + Error_desc), width = 0.03, color = "blue") +
+  # Combined plot (both swap and per-defect)
+  p_combined <- ggplot() +
+    # Swap acceptance points and errors (shifted left slightly)
+    geom_point(data = plot_data, aes(x = Replica - eps, y = Mean_swap), size = 1.5, color = "red") +
+    geom_errorbar(data = plot_data, aes(x = Replica - eps, ymin = Mean_swap - Error_swap, ymax = Mean_swap + Error_swap), width = 0.03, color = "red") +
 
-    # full-span shaded bands using annotate (covers the full Replica x-range)
+    # Per-defect acceptance points and errors (shifted right slightly)
+    geom_point(data = plot_data_defects, aes(x = Defect + eps, y = Mean_defect), size = 1.5, color = "blue") +
+    geom_errorbar(data = plot_data_defects, aes(x = Defect + eps, ymin = Mean_defect - Error_defect, ymax = Mean_defect + Error_defect), width = 0.03, color = "blue") +
+
+    # Full-span shaded bands for weighted means
     annotate("rect",
       xmin = x_min, xmax = x_max,
-      ymin = asc_mean - asc_err, ymax = asc_mean + asc_err,
+      ymin = swap_mean - swap_err, ymax = swap_mean + swap_err,
       fill = "red", alpha = 0.1
     ) +
-    # annotate("rect",
-    #  xmin = x_min, xmax = x_max,
-    #  ymin = desc_mean - desc_err, ymax = desc_mean + desc_err,
-    #  fill = "blue", alpha = 0.1
-    # ) +
+    annotate("rect",
+      xmin = x_min, xmax = x_max,
+      ymin = defect_mean - defect_err, ymax = defect_mean + defect_err,
+      fill = "blue", alpha = 0.1
+    ) +
 
-    # horizontal lines for the weighted means (span full width by using yintercept param)
-    geom_hline(yintercept = asc_mean, linetype = "dashed", color = "red") +
-    # geom_hline(yintercept = desc_mean, linetype = "dashed", color = "blue") +
-
-    # labels with numeric formatting
-    # annotate("text",
-    #  x = x_max - 0.1 * (x_max - x_min), y = asc_mean + 0.05,
-    #  label = sprintf("Weighted Mean ascending: %.3f ± %.3f", asc_mean, asc_err), color = "red", hjust = 1
-    # ) +
-    # annotate("text",
-    #  x = x_max - 0.1 * (x_max - x_min), y = desc_mean + 0.05,
-    #  label = sprintf("Weighted Mean descending: %.3f ± %.3f", desc_mean, desc_err), color = "blue", hjust = 1
-    # ) +
+    # Horizontal lines for the weighted means
+    geom_hline(yintercept = swap_mean, linetype = "dashed", color = "red") +
+    geom_hline(yintercept = defect_mean, linetype = "dashed", color = "blue") +
     labs(
-      title = "Acceptance Rate per Replica",
+      title = "Acceptance Rates: Swap (red) vs Per-Defect (blue)",
       x = "Replica / Defect",
       y = "Acceptance Rate"
     ) +
-    # set x ticks at defects_full positions and render them in grey
+    # Set x ticks at defects_full positions
+    scale_x_continuous(breaks = rep_sorted, labels = rep_sorted) +
+    theme_minimal() +
+    theme(
+      axis.ticks.x = element_line(color = "black"),
+      axis.text.x = element_text(color = "black")
+    )
+
+  # Swap-only plot
+  p_swap <- ggplot(plot_data, aes(x = Replica, y = Mean_swap)) +
+    geom_point(size = 1.5, color = "red") +
+    geom_errorbar(aes(ymin = Mean_swap - Error_swap, ymax = Mean_swap + Error_swap), width = 0.03, color = "red") +
+    annotate("rect",
+      xmin = x_min, xmax = x_max,
+      ymin = swap_mean - swap_err, ymax = swap_mean + swap_err,
+      fill = "red", alpha = 0.1
+    ) +
+    geom_hline(yintercept = swap_mean, linetype = "dashed", color = "red") +
+    labs(
+      title = "Swap Acceptance Rate per Replica",
+      x = "Replica / Defect",
+      y = "Acceptance Rate"
+    ) +
+    scale_x_continuous(breaks = rep_sorted, labels = rep_sorted) +
+    theme_minimal() +
+    theme(
+      axis.ticks.x = element_line(color = "black"),
+      axis.text.x = element_text(color = "black")
+    )
+
+  # Per-defect-only plot
+  p_defect <- ggplot(plot_data_defects, aes(x = Defect, y = Mean_defect)) +
+    geom_point(size = 1.5, color = "blue") +
+    geom_errorbar(aes(ymin = Mean_defect - Error_defect, ymax = Mean_defect + Error_defect), width = 0.03, color = "blue") +
+    annotate("rect",
+      xmin = x_min, xmax = x_max,
+      ymin = defect_mean - defect_err, ymax = defect_mean + defect_err,
+      fill = "blue", alpha = 0.1
+    ) +
+    geom_hline(yintercept = defect_mean, linetype = "dashed", color = "blue") +
+    labs(
+      title = "Per-Defect Acceptance Rate",
+      x = "Defect",
+      y = "Acceptance Rate"
+    ) +
     scale_x_continuous(breaks = rep_sorted, labels = rep_sorted) +
     theme_minimal() +
     theme(
@@ -192,12 +290,22 @@ analyze_acceptance <- function(directory, data) {
     )
 
   write_log(sprintf(
-    "Weighted Mean Acceptance Rates: %.3f ± %.3f", # , descending = %.3f ± %.3f",
-    asc_mean, asc_err
+    "Weighted Mean Swap Acceptance Rate: %.3f ± %.3f",
+    swap_mean, swap_err
+  ))
+  write_log(sprintf(
+    "Weighted Mean Per-Defect Acceptance Rate: %.3f ± %.3f",
+    defect_mean, defect_err
   ))
 
-  ggsave(file.path(directory, "acceptance_by_replica.pdf"), plot = p, width = 8, height = 6)
-  write_log("Acceptance analysis plot saved to acceptance_by_replica.pdf")
+  ggsave(file.path(directory, "acceptance_by_replica.pdf"), plot = p_combined, width = 8, height = 6)
+  write_log("Combined acceptance plot saved to acceptance_by_replica.pdf")
+
+  ggsave(file.path(directory, "acceptance_swap_only.pdf"), plot = p_swap, width = 8, height = 6)
+  write_log("Swap acceptance plot saved to acceptance_swap_only.pdf")
+
+  ggsave(file.path(directory, "acceptance_per_defect_only.pdf"), plot = p_defect, width = 8, height = 6)
+  write_log("Per-defect acceptance plot saved to acceptance_per_defect_only.pdf")
 
   return(plot_data)
 }
