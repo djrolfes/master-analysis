@@ -43,10 +43,16 @@ safe_computeacf <- function(data, W.max, label = "data") {
 }
 
 analyze_topological_charge <- function(directory, skip_initial = 0) {
-  S_Q <- 1.5
-  S_Q_rounded <- 1.5
-  S_Q_squared <- 1.5
-  S_Q_squared_rounded <- 1.5
+  s <- 2.5
+  s_q <- s
+  s_q_rounded <- s
+  s_q_squared <- s + 2.5
+  s_q_squared_rounded <- s + 2.5
+  r <- 4
+  r_q <- r
+  r_q_rounded <- r
+  r_q_squared <- r
+  r_q_squared_rounded <- r
   # Configure logfile for this run
   assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
   write_log(paste0("analyze_topological_charge: start directory=", directory, " skip_initial=", skip_initial))
@@ -176,7 +182,11 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # uwerrprimary handles primary (1D) observables
   uw <- tryCatch(
     {
-      hadron::uwerrprimary(ac_data, pl = TRUE, S = S_Q)
+      lreps <- as.integer(length(ac_data) / r_q)
+      diff <- length(ac_data) - (r_q * lreps)
+      n_reps <- c(rep(lreps, r_q))
+      n_reps[1] <- n_reps[1] + diff # add remainder to last rep
+      hadron::uwerrprimary(ac_data, n_reps, pl = TRUE, S = s_q)
     },
     error = function(e) {
       write_log(paste0("ERROR computing uwerrprimary: ", conditionMessage(e)))
@@ -288,7 +298,11 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # uwerr on rounded data
   uw_rounded <- tryCatch(
     {
-      hadron::uwerrprimary(ac_data_rounded, pl = FALSE, S = S_Q_rounded)
+      lreps <- as.integer(length(ac_data_rounded) / r_q_rounded)
+      diff <- length(ac_data_rounded) - (r_q_rounded * lreps)
+      n_reps <- c(rep(lreps, r_q_rounded))
+      n_reps[1] <- n_reps[1] + diff # add remainder to last rep
+      hadron::uwerrprimary(ac_data_rounded, n_reps, pl = FALSE, S = s_q_rounded)
     },
     error = function(e) {
       write_log(paste0("ERROR computing uwerrprimary on rounded data: ", conditionMessage(e)))
@@ -370,7 +384,11 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # uwerr on Q^2 data
   uw_q_squared <- tryCatch(
     {
-      hadron::uwerrprimary(ac_data_q_squared, pl = FALSE, S = S_Q_squared)
+      lreps <- as.integer(length(ac_data_q_squared) / r_q_squared)
+      diff <- length(ac_data_q_squared) - (r_q_squared * lreps)
+      n_reps <- c(rep(lreps, r_q_squared))
+      n_reps[1] <- n_reps[1] + diff # add remainder to last rep
+      hadron::uwerrprimary(ac_data_q_squared, n_reps, pl = FALSE, S = s_q_squared)
     },
     error = function(e) {
       write_log(paste0("ERROR computing uwerrprimary on Q^2 data: ", conditionMessage(e)))
@@ -451,7 +469,11 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # uwerr on Q^2 from rounded data
   uw_rounded_q_squared <- tryCatch(
     {
-      hadron::uwerrprimary(ac_data_rounded_q_squared, pl = FALSE, S = S_Q_squared_rounded)
+      lreps <- as.integer(length(ac_data_rounded_q_squared) / r_q_squared_rounded)
+      diff <- length(ac_data_rounded_q_squared) - (r_q_squared_rounded * lreps)
+      n_reps <- c(rep(lreps, r_q_squared_rounded))
+      n_reps[1] <- n_reps[1] + diff # add remainder to last rep
+      hadron::uwerrprimary(ac_data_rounded_q_squared, n_reps, pl = FALSE, S = s_q_squared_rounded)
     },
     error = function(e) {
       write_log(paste0("ERROR computing uwerrprimary on Q^2 from rounded data: ", conditionMessage(e)))
