@@ -157,6 +157,22 @@ read_ptbc_simulation_log <- function(directory) {
   }
 
   lines <- readLines(filepath)
+  
+  # Check header to determine format
+  header_line <- ""
+  for (line in lines) {
+    if (grepl("^#", line)) {
+      header_line <- line
+      break
+    }
+  }
+  
+  # Determine format based on header
+  # Old format: header contains "ascending"
+  # New format: header contains "starting_defect_value"
+  is_old_format <- grepl("ascending", header_line, ignore.case = TRUE)
+  is_new_format <- grepl("starting_defect_value", header_line, ignore.case = TRUE)
+  
   lines <- lines[!grepl("^#", lines)] # Remove comments
 
   if (length(lines) == 0) {
@@ -170,11 +186,22 @@ read_ptbc_simulation_log <- function(directory) {
 
   data_list <- lapply(lines, function(line) {
     parts <- strsplit(line, ", ")[[1]]
+    field4 <- as.integer(parts[4])
+    
+    if (is_old_format) {
+      # Old format: field4 is "ascending" (0 or 1)
+      # Convert to starting_defect_value: ascending=1 means start at 0, ascending=0 means start at 1
+      starting_defect_value <- if (field4 == 1) 0L else 1L
+    } else {
+      # New format: field4 is already starting_defect_value (0 or 1)
+      starting_defect_value <- field4
+    }
+    
     list(
       step = as.integer(parts[1]),
       accepts = list(parse_vector(parts[2])),
       delta_H_swap = list(parse_vector(parts[3])),
-      ascending = as.integer(parts[4]),
+      starting_defect_value = starting_defect_value,
       defects = list(parse_vector(parts[5])),
       prev_defects = list(parse_vector(parts[6]))
     )

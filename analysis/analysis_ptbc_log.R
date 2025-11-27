@@ -131,11 +131,12 @@ analyze_acceptance <- function(directory, data) {
   swap_attempts_per_replica <- list()
   for (i in seq_len(nrow(data))) {
     row <- data[i, ]
-    ascending <- as.logical(row$ascending)
+    starting_defect <- row$starting_defect_value
     accepts <- unlist(row$accepts)
 
-    # Normalize to ascending order
-    if (!is.na(ascending) && !ascending) {
+    # Normalize to ascending order (starting from defect value 0)
+    # If starting_defect_value is 1, the swap array is in descending order, so reverse it
+    if (!is.na(starting_defect) && starting_defect == 1) {
       accepts <- rev(accepts)
     }
 
