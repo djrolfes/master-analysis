@@ -74,6 +74,22 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
     stop("topological_charge_filename not found in YAML")
   }
 
+  # Extract measurement_interval for HMC normalization
+  measurement_interval <- cfg$GaugeObservableParams$measurement_interval
+  if (is.null(measurement_interval)) {
+    write_log("WARNING: measurement_interval not found in YAML; using default value of 1")
+    measurement_interval <- 1
+  }
+
+  # Extract number of replicas for PTBC normalization (if available)
+  n_replicas <- NA
+  if (!is.null(cfg$PTBCParams) && !is.null(cfg$PTBCParams$defect_values)) {
+    n_replicas <- length(cfg$PTBCParams$defect_values)
+    write_log(paste0("analyze_topological_charge: found ", n_replicas, " replicas in PTBCParams"))
+  } else {
+    write_log("analyze_topological_charge: PTBCParams not found; PTBC normalization will not be computed")
+  }
+
   topo_path <- file.path(directory, topo_filename)
   if (!file.exists(topo_path)) {
     write_log(paste0("ERROR: topological charge file not found: ", topo_path))
@@ -278,6 +294,27 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis dtau: %s\n", as.character(boot_dtau)), file = summary_file, append = TRUE)
+
+      # HMC normalized (multiply by measurement_interval)
+      cat("\nHMC normalized:\n", file = summary_file, append = TRUE)
+      cat(sprintf("uwerr_tauint_hmc: %s\n", as.character(if (!is.na(tauint)) tauint * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("uwerr_dtauint_hmc: %s\n", as.character(if (!is.na(dtauint)) dtauint * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("computeacf_tau_hmc: %s\n", as.character(if (!is.na(acf_tau)) acf_tau * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("computeacf_dtau_hmc: %s\n", as.character(if (!is.na(acf_dtau)) acf_dtau * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis tau_hmc: %s\n", as.character(if (!is.na(boot_tau)) boot_tau * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis dtau_hmc: %s\n", as.character(if (!is.na(boot_dtau)) boot_dtau * measurement_interval else NA)), file = summary_file, append = TRUE)
+
+      # PTBC normalized (multiply by measurement_interval and n_replicas if available)
+      if (!is.na(n_replicas)) {
+        cat("\nPTBC normalized:\n", file = summary_file, append = TRUE)
+        cat(sprintf("uwerr_tauint_ptbc: %s\n", as.character(if (!is.na(tauint)) tauint * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("uwerr_dtauint_ptbc: %s\n", as.character(if (!is.na(dtauint)) dtauint * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("computeacf_tau_ptbc: %s\n", as.character(if (!is.na(acf_tau)) acf_tau * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("computeacf_dtau_ptbc: %s\n", as.character(if (!is.na(acf_dtau)) acf_dtau * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("bootstrap.analysis tau_ptbc: %s\n", as.character(if (!is.na(boot_tau)) boot_tau * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("bootstrap.analysis dtau_ptbc: %s\n", as.character(if (!is.na(boot_dtau)) boot_dtau * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+      }
+
       write_log("analyze_topological_charge: summary for original data written")
     },
     error = function(e) {
@@ -363,6 +400,27 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_rounded)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_rounded)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis dtau: %s\n", as.character(boot_dtau_rounded)), file = summary_file, append = TRUE)
+
+      # HMC normalized
+      cat("\nHMC normalized:\n", file = summary_file, append = TRUE)
+      cat(sprintf("uwerr_tauint_hmc: %s\n", as.character(if (!is.na(tauint_rounded)) tauint_rounded * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("uwerr_dtauint_hmc: %s\n", as.character(if (!is.na(dtauint_rounded)) dtauint_rounded * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("computeacf_tau_hmc: %s\n", as.character(if (!is.na(acf_tau_rounded)) acf_tau_rounded * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("computeacf_dtau_hmc: %s\n", as.character(if (!is.na(acf_dtau_rounded)) acf_dtau_rounded * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis tau_hmc: %s\n", as.character(if (!is.na(boot_tau_rounded)) boot_tau_rounded * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis dtau_hmc: %s\n", as.character(if (!is.na(boot_dtau_rounded)) boot_dtau_rounded * measurement_interval else NA)), file = summary_file, append = TRUE)
+
+      # PTBC normalized
+      if (!is.na(n_replicas)) {
+        cat("\nPTBC normalized:\n", file = summary_file, append = TRUE)
+        cat(sprintf("uwerr_tauint_ptbc: %s\n", as.character(if (!is.na(tauint_rounded)) tauint_rounded * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("uwerr_dtauint_ptbc: %s\n", as.character(if (!is.na(dtauint_rounded)) dtauint_rounded * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("computeacf_tau_ptbc: %s\n", as.character(if (!is.na(acf_tau_rounded)) acf_tau_rounded * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("computeacf_dtau_ptbc: %s\n", as.character(if (!is.na(acf_dtau_rounded)) acf_dtau_rounded * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("bootstrap.analysis tau_ptbc: %s\n", as.character(if (!is.na(boot_tau_rounded)) boot_tau_rounded * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("bootstrap.analysis dtau_ptbc: %s\n", as.character(if (!is.na(boot_dtau_rounded)) boot_dtau_rounded * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+      }
+
       write_log("analyze_topological_charge: summary for rounded data written")
     },
     error = function(e) {
@@ -448,6 +506,27 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis dtau: %s\n", as.character(boot_dtau_q_squared)), file = summary_file, append = TRUE)
+
+      # HMC normalized
+      cat("\nHMC normalized:\n", file = summary_file, append = TRUE)
+      cat(sprintf("uwerr_tauint_hmc: %s\n", as.character(if (!is.na(tauint_q_squared)) tauint_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("uwerr_dtauint_hmc: %s\n", as.character(if (!is.na(dtauint_q_squared)) dtauint_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("computeacf_tau_hmc: %s\n", as.character(if (!is.na(acf_tau_q_squared)) acf_tau_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("computeacf_dtau_hmc: %s\n", as.character(if (!is.na(acf_dtau_q_squared)) acf_dtau_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis tau_hmc: %s\n", as.character(if (!is.na(boot_tau_q_squared)) boot_tau_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis dtau_hmc: %s\n", as.character(if (!is.na(boot_dtau_q_squared)) boot_dtau_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+
+      # PTBC normalized
+      if (!is.na(n_replicas)) {
+        cat("\nPTBC normalized:\n", file = summary_file, append = TRUE)
+        cat(sprintf("uwerr_tauint_ptbc: %s\n", as.character(if (!is.na(tauint_q_squared)) tauint_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("uwerr_dtauint_ptbc: %s\n", as.character(if (!is.na(dtauint_q_squared)) dtauint_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("computeacf_tau_ptbc: %s\n", as.character(if (!is.na(acf_tau_q_squared)) acf_tau_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("computeacf_dtau_ptbc: %s\n", as.character(if (!is.na(acf_dtau_q_squared)) acf_dtau_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("bootstrap.analysis tau_ptbc: %s\n", as.character(if (!is.na(boot_tau_q_squared)) boot_tau_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("bootstrap.analysis dtau_ptbc: %s\n", as.character(if (!is.na(boot_dtau_q_squared)) boot_dtau_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+      }
+
       write_log("analyze_topological_charge: summary for Q^2 data written")
     },
     error = function(e) {
@@ -534,6 +613,27 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       cat(sprintf("computeacf_dtau: %s\n", as.character(acf_dtau_rounded_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis tau: %s\n", as.character(boot_tau_rounded_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("bootstrap.analysis dtau: %s\n", as.character(boot_dtau_rounded_q_squared)), file = summary_file, append = TRUE)
+
+      # HMC normalized
+      cat("\nHMC normalized:\n", file = summary_file, append = TRUE)
+      cat(sprintf("uwerr_tauint_hmc: %s\n", as.character(if (!is.na(tauint_rounded_q_squared)) tauint_rounded_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("uwerr_dtauint_hmc: %s\n", as.character(if (!is.na(dtauint_rounded_q_squared)) dtauint_rounded_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("computeacf_tau_hmc: %s\n", as.character(if (!is.na(acf_tau_rounded_q_squared)) acf_tau_rounded_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("computeacf_dtau_hmc: %s\n", as.character(if (!is.na(acf_dtau_rounded_q_squared)) acf_dtau_rounded_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis tau_hmc: %s\n", as.character(if (!is.na(boot_tau_rounded_q_squared)) boot_tau_rounded_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+      cat(sprintf("bootstrap.analysis dtau_hmc: %s\n", as.character(if (!is.na(boot_dtau_rounded_q_squared)) boot_dtau_rounded_q_squared * measurement_interval else NA)), file = summary_file, append = TRUE)
+
+      # PTBC normalized
+      if (!is.na(n_replicas)) {
+        cat("\nPTBC normalized:\n", file = summary_file, append = TRUE)
+        cat(sprintf("uwerr_tauint_ptbc: %s\n", as.character(if (!is.na(tauint_rounded_q_squared)) tauint_rounded_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("uwerr_dtauint_ptbc: %s\n", as.character(if (!is.na(dtauint_rounded_q_squared)) dtauint_rounded_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("computeacf_tau_ptbc: %s\n", as.character(if (!is.na(acf_tau_rounded_q_squared)) acf_tau_rounded_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("computeacf_dtau_ptbc: %s\n", as.character(if (!is.na(acf_dtau_rounded_q_squared)) acf_dtau_rounded_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("bootstrap.analysis tau_ptbc: %s\n", as.character(if (!is.na(boot_tau_rounded_q_squared)) boot_tau_rounded_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+        cat(sprintf("bootstrap.analysis dtau_ptbc: %s\n", as.character(if (!is.na(boot_dtau_rounded_q_squared)) boot_dtau_rounded_q_squared * measurement_interval * n_replicas else NA)), file = summary_file, append = TRUE)
+      }
+
       write_log("analyze_topological_charge: summary for Q^2 from rounded data written")
     },
     error = function(e) {
