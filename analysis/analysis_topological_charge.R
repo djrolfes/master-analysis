@@ -168,18 +168,16 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # 2) Compute autocorrelation time using hadron::uwerr
   # Skip initial configs if requested
   if (skip_initial < 0) skip_initial <- 0
-  if (skip_initial >= nrow(data)) {
-    write_log(paste0("WARNING: skip_initial >= number of rows (", nrow(data), "); nothing to analyze for autocorr"))
-    return(list(timeseries = timeseries_plot, autocorr = NULL))
-  }
 
+  # Filter data first, then check if we have enough points
   ac_data <- data$topo[data$step > skip_initial]
   ac_data <- as.numeric(ac_data)
   ac_data <- ac_data[!is.na(ac_data)]
 
-  write_log(paste0("analyze_topological_charge: computing uwerr on ", length(ac_data), " samples after skipping ", skip_initial))
+  write_log(paste0("analyze_topological_charge: computing uwerr on ", length(ac_data), " samples after skipping steps <= ", skip_initial))
+
   if (length(ac_data) < 2) {
-    write_log("Not enough data points to compute autocorrelation")
+    write_log(paste0("WARNING: Not enough data points (", length(ac_data), ") to compute autocorrelation after skipping"))
     return(list(timeseries = timeseries_plot, autocorr = NULL))
   }
 
