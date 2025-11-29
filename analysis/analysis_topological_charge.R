@@ -138,8 +138,12 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   )
 
   # --- Bootstrap analysis of the topological charge (mean ± error) ---
+  # Filter data first (bootstrap.analysis doesn't have a skip parameter)
+  data_for_boot <- data$topo[data$step > skip_initial]
+
   out_boot_pdf <- file.path(directory, "topological_charge_bootstrap.pdf")
-  write_log(paste0("analyze_topological_charge: computing bootstrap.analysis and saving to ", out_boot_pdf))
+  out_boot_txt <- file.path(directory, "topological_charge_bootstrap.txt")
+  write_log(paste0("analyze_topological_charge: computing bootstrap.analysis on ", length(data_for_boot), " points and saving to ", out_boot_pdf))
 
   boot_original <- NULL
   tryCatch(
@@ -148,7 +152,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
       pdf(out_boot_pdf, width = 8, height = 6)
       # capture printed output from bootstrap.analysis into a character vector
       boot_output_text <- capture.output({
-        boot_original <- hadron::bootstrap.analysis(data$topo, skip = skip_initial, pl = TRUE)
+        boot_original <- hadron::bootstrap.analysis(data_for_boot, pl = TRUE)
       })
       dev.off()
 
@@ -289,7 +293,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   boot_rounded <- tryCatch(
     {
-      hadron::bootstrap.analysis(ac_data_rounded, skip = skip_initial, pl = FALSE)
+      hadron::bootstrap.analysis(ac_data_rounded, pl = FALSE)
     },
     error = function(e) {
       return(NULL)
@@ -374,7 +378,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   boot_q_squared <- tryCatch(
     {
-      hadron::bootstrap.analysis(ac_data_q_squared, skip = skip_initial, pl = FALSE)
+      hadron::bootstrap.analysis(ac_data_q_squared, pl = FALSE)
     },
     error = function(e) {
       return(NULL)
@@ -459,7 +463,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
   boot_rounded_q_squared <- tryCatch(
     {
-      hadron::bootstrap.analysis(ac_data_rounded_q_squared, skip = skip_initial, pl = FALSE)
+      hadron::bootstrap.analysis(ac_data_rounded_q_squared, pl = FALSE)
     },
     error = function(e) {
       return(NULL)

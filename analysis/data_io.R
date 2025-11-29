@@ -157,22 +157,6 @@ read_ptbc_simulation_log <- function(directory) {
   }
 
   lines <- readLines(filepath)
-  
-  # Check header to determine format
-  header_line <- ""
-  for (line in lines) {
-    if (grepl("^#", line)) {
-      header_line <- line
-      break
-    }
-  }
-  
-  # Determine format based on header
-  # Old format: header contains "ascending"
-  # New format: header contains "starting_defect_value"
-  is_old_format <- grepl("ascending", header_line, ignore.case = TRUE)
-  is_new_format <- grepl("starting_defect_value", header_line, ignore.case = TRUE)
-  
   lines <- lines[!grepl("^#", lines)] # Remove comments
 
   if (length(lines) == 0) {
@@ -186,23 +170,37 @@ read_ptbc_simulation_log <- function(directory) {
 
   data_list <- lapply(lines, function(line) {
     parts <- strsplit(line, ", ")[[1]]
-    field4 <- as.integer(parts[4])
-    
-    if (is_old_format) {
-      # Old format: field4 is "ascending" (0 or 1)
-      # Convert to starting_defect_value: ascending=1 means start at 0, ascending=0 means start at 1
-      starting_defect_value <- if (field4 == 1) 0L else 1L
+
+    # Parse the 4th field - could be "ascending" (old) or "starting_defect_value" (new)
+    field4 <- parts[4]
+    defects <- parse_vector(parts[5])
+
+    # Determine if this is old format (ascending: 0 or 1) or new format (starting_defect_value: actual defect value)
+    # Old format: field4 is "0" or "1" (boolean)
+    # New format: field4 is a defect value (e.g., "0.0", "0.137", "1.0")
+    field4_numeric <- as.numeric(field4)
+
+    # Check if field4 is a boolean (0 or 1) or a defect value
+    # If it's 0 or 1, it's the old "ascending" format
+    # Otherwise, it's the new "starting_defect_value" format
+    if (field4_numeric %in% c(0, 1)) {
+      # Old format: ascending
+      ascending <- as.logical(field4_numeric)
+      starting_defect_value <- NA
     } else {
-      # New format: field4 is already starting_defect_value (0 or 1)
-      starting_defect_value <- field4
+      # New format: starting_defect_value
+      starting_defect_value <- field4_numeric
+      # Determine ascending based on whether starting value is min or max
+      ascending <- (starting_defect_value == min(defects))
     }
-    
+
     list(
       step = as.integer(parts[1]),
       accepts = list(parse_vector(parts[2])),
       delta_H_swap = list(parse_vector(parts[3])),
+      ascending = ascending,
       starting_defect_value = starting_defect_value,
-      defects = list(parse_vector(parts[5])),
+      defects = list(defects),
       prev_defects = list(parse_vector(parts[6]))
     )
   })
