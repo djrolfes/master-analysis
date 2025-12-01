@@ -63,10 +63,17 @@ source .venv/bin/activate
 
 # Verify packages are available (after activation)
 echo "Verifying Python packages..."
-python3 -c "import pandas, yaml, matplotlib, seaborn, numpy; print('All packages loaded successfully')" || {
+python3 -c "import pandas; import yaml; import matplotlib; import seaborn; import numpy; print('All packages loaded successfully')" || {
     echo "ERROR: Required Python packages not available in venv."
     echo "Installed packages:"
     pip list
+    echo ""
+    echo "Trying individual imports for debugging:"
+    python3 -c "import pandas; print('pandas: OK')" || echo "pandas: FAILED"
+    python3 -c "import yaml; print('yaml: OK')" || echo "yaml: FAILED"
+    python3 -c "import matplotlib; print('matplotlib: OK')" || echo "matplotlib: FAILED"
+    python3 -c "import seaborn; print('seaborn: OK')" || echo "seaborn: FAILED"
+    python3 -c "import numpy; print('numpy: OK')" || echo "numpy: FAILED"
     exit 1
 }
 
