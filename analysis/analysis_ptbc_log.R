@@ -408,7 +408,6 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
 
     write_log(sprintf("  Creating plot for replica %d...", replica_idx))
     p_ts <- ggplot(ts_data, aes(x = step)) +
-    p_ts <- ggplot(ts_data, aes(x = step)) +
       # Running acceptance with error band
       geom_ribbon(
         aes(
@@ -470,6 +469,7 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
         plot.title = element_text(size = 10),
         legend.position = "bottom",
         legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7)
       )
 
     timeseries_plots[[replica_idx]] <- p_ts
@@ -500,8 +500,6 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
     gridExtra::grid.arrange(grobs = timeseries_plots, ncol = n_cols)
     dev.off()
     write_log("PDF saved (grid mode)")
-  } gridExtra::grid.arrange(grobs = timeseries_plots, ncol = n_cols)
-    dev.off()
   }
 
   write_log(sprintf("Timeseries plots saved to acceptance_timeseries.pdf (%d transitions)", length(timeseries_plots)))
