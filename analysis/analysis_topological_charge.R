@@ -393,7 +393,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # Append rounded results to summary file
   tryCatch(
     {
-      cat("\n--- Rounded Data ---\n", file = summary_file, append = TRUE)
+      cat("\n\n--- Rounded Data ---\n", file = summary_file, append = TRUE)
       cat(sprintf("uwerr_tauint: %s\n", as.character(tauint_rounded)), file = summary_file, append = TRUE)
       cat(sprintf("uwerr_dtauint: %s\n", as.character(dtauint_rounded)), file = summary_file, append = TRUE)
       cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_rounded)), file = summary_file, append = TRUE)
@@ -499,7 +499,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # Append Q^2 results to summary file
   tryCatch(
     {
-      cat("\n--- Q^2 Data ---\n", file = summary_file, append = TRUE)
+      cat("\n\n--- Q^2 Data ---\n", file = summary_file, append = TRUE)
       cat(sprintf("uwerr_tauint: %s\n", as.character(tauint_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("uwerr_dtauint: %s\n", as.character(dtauint_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_q_squared)), file = summary_file, append = TRUE)
@@ -606,7 +606,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # Append Q^2 from rounded results to summary file
   tryCatch(
     {
-      cat("\n--- Rounded Q^2 Data ---\n", file = summary_file, append = TRUE)
+      cat("\n\n--- Rounded Q^2 Data ---\n", file = summary_file, append = TRUE)
       cat(sprintf("uwerr_tauint: %s\n", as.character(tauint_rounded_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("uwerr_dtauint: %s\n", as.character(dtauint_rounded_q_squared)), file = summary_file, append = TRUE)
       cat(sprintf("computeacf_tau: %s\n", as.character(acf_tau_rounded_q_squared)), file = summary_file, append = TRUE)
