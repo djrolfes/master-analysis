@@ -2,6 +2,8 @@ import os
 import sys
 import yaml
 import subprocess
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
 from data_io import read_data_file
 
 def read_yaml_config(yaml_path):
@@ -70,19 +72,60 @@ def analyze_directory(directory, skip_steps="1250"):
     env = os.environ.copy()
     env["R_LIBS_USER"] = r_libs_user
 
-    for r_script in r_scripts:
+    # Run R scripts in parallel using all available cores
+    num_cores = multiprocessing.cpu_count()
+    print(f"Running R analyses in parallel using {num_cores} cores...")
+
+    def run_r_script(r_script):
+        """Helper function to run a single R script"""
+        script_name = r_script[1]  # Extract the script filename
         try:
-            print(f"Dispatching R analysis with {r_script}...")
-            subprocess.run(
+            print(f"Starting: {script_name}")
+            result = subprocess.run(
                 r_script,
                 check=True,
-                env=env
+                env=env,
+                capture_output=True,
+                text=True
             )
-            print(f"R analysis with {r_script[0]} completed successfully.")
+            print(f"Completed: {script_name}")
+            return (script_name, True, None)
         except subprocess.CalledProcessError as e:
-            print(f"Error: R analysis with {r_script[0]} failed with exit code {e.returncode}")
+            error_msg = f"Exit code {e.returncode}\nStderr: {e.stderr}"
+            print(f"Failed: {script_name} - {error_msg}")
+            return (script_name, False, error_msg)
         except FileNotFoundError:
-            print("Error: Rscript not found. Ensure R is installed and available in PATH.")
+            error_msg = "Rscript not found. Ensure R is installed and available in PATH."
+            print(f"Failed: {script_name} - {error_msg}")
+            return (script_name, False, error_msg)
+
+    # Execute R scripts in parallel
+    with ProcessPoolExecutor(max_workers=num_cores) as executor:
+        futures = {executor.submit(run_r_script, r_script): r_script for r_script in r_scripts}
+        
+        results = []
+        for future in as_completed(futures):
+            script_name, success, error = future.result()
+            results.append((script_name, success, error))
+    
+    # Print summary
+    print("\n" + "="*60)
+    print("Analysis Summary:")
+    print("="*60)
+    successful = [r for r in results if r[1]]
+    failed = [r for r in results if not r[1]]
+    
+    print(f"Successful: {len(successful)}/{len(results)}")
+    for script_name, _, _ in successful:
+        print(f"  ✓ {script_name}")
+    
+    if failed:
+        print(f"\nFailed: {len(failed)}/{len(results)}")
+        for script_name, _, error in failed:
+            print(f"  ✗ {script_name}")
+            if error:
+                print(f"    Error: {error}")
+    print("="*60)
 
 if __name__ == '__main__':
     if len(sys.argv) not in (2, 3):
