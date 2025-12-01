@@ -18,7 +18,7 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     module purge
     module load GCC/11.2.0
     module load R
-    module load Python
+    # Do NOT load Python module - we use our own venv
 fi
 
 # --- Parse optional -skip flag ---
@@ -59,7 +59,11 @@ if [ ! -d ".venv" ]; then
     exit 1
 fi
 
+# Activate venv (this must come AFTER module loads to override system Python)
 source .venv/bin/activate
+
+echo "Using Python: $(which python3)"
+echo "Python version: $(python3 --version)"
 
 # Verify packages are available (after activation)
 echo "Verifying Python packages..."
