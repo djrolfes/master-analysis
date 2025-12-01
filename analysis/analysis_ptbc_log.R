@@ -309,7 +309,156 @@ analyze_acceptance <- function(directory, data) {
   ggsave(file.path(directory, "acceptance_per_defect_only.pdf"), plot = p_defect, width = 8, height = 6)
   write_log("Per-defect acceptance plot saved to acceptance_per_defect_only.pdf")
 
+  # Create timeseries plots
+  create_acceptance_timeseries(
+    directory, swap_attempts_per_replica, mean_swap_acceptance,
+    err_swap_acceptance, rep_sorted, Replica_vec
+  )
+
   return(plot_data)
+}
+
+# Function to create acceptance timeseries plots
+create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, mean_swap_acceptance,
+                                         err_swap_acceptance, rep_sorted, Replica_vec) {
+  write_log("Creating timeseries plots for swap transitions...")
+
+  # Prepare data for timeseries: need step number and acceptance for each replica
+  num_replicas <- length(swap_attempts_per_replica)
+
+  # Create a list to store plots for each replica/transition
+  timeseries_plots <- list()
+
+  # Set window size for moving average (e.g., 50 measurements)
+  window_size <- min(50, max(10, floor(length(swap_attempts_per_replica[[1]]) / 20)))
+  write_log(sprintf("Using window size of %d for moving average", window_size))
+
+  for (replica_idx in seq_along(swap_attempts_per_replica)) {
+    accepts <- swap_attempts_per_replica[[replica_idx]]
+    steps <- seq_along(accepts)
+
+    # Calculate running acceptance (cumulative mean)
+    running_acceptance <- cumsum(accepts) / seq_along(accepts)
+
+    # Calculate running standard deviation
+    running_std <- sapply(seq_along(accepts), function(i) {
+      if (i == 1) {
+        return(0)
+      }
+      sd(accepts[1:i])
+    })
+
+    # Calculate windowed acceptance (moving average) and windowed std
+    windowed_acceptance <- rep(NA, length(accepts))
+    windowed_std <- rep(NA, length(accepts))
+    for (i in seq_along(accepts)) {
+      start_idx <- max(1, i - window_size + 1)
+      window_data <- accepts[start_idx:i]
+      windowed_acceptance[i] <- mean(window_data)
+      windowed_std[i] <- sd(window_data)
+    }
+
+    # Determine which transition this is (between which defects)
+    if (replica_idx <= length(Replica_vec)) {
+      transition_label <- sprintf(
+        "Transition %.3f <-> %.3f",
+        rep_sorted[replica_idx],
+        rep_sorted[replica_idx + 1]
+      )
+    } else {
+      transition_label <- sprintf("Replica %d", replica_idx)
+    }
+
+    ts_data <- data.frame(
+      step = steps,
+      raw_acceptance = accepts,
+      running_acceptance = running_acceptance,
+      running_std = running_std,
+      windowed_acceptance = windowed_acceptance,
+      windowed_std = windowed_std
+    )
+
+    # Get overall mean and error for this transition
+    overall_mean <- mean_swap_acceptance[replica_idx]
+    overall_err <- err_swap_acceptance[replica_idx]
+
+    p_ts <- ggplot(ts_data, aes(x = step)) +
+      # Running acceptance with error band
+      geom_ribbon(
+        aes(
+          ymin = pmax(0, running_acceptance - running_std / sqrt(step)),
+          ymax = pmin(1, running_acceptance + running_std / sqrt(step))
+        ),
+        fill = "steelblue", alpha = 0.2
+      ) +
+      geom_line(aes(y = running_acceptance, color = "Running"), linewidth = 0.8) +
+
+      # Windowed acceptance with error band
+      geom_ribbon(
+        aes(
+          ymin = pmax(0, windowed_acceptance - windowed_std / sqrt(pmin(step, window_size))),
+          ymax = pmin(1, windowed_acceptance + windowed_std / sqrt(pmin(step, window_size)))
+        ),
+        fill = "darkorange", alpha = 0.2
+      ) +
+      geom_line(aes(y = windowed_acceptance, color = "Windowed"), linewidth = 0.8, alpha = 0.7) +
+
+      # Overall mean with error band
+      geom_hline(yintercept = overall_mean, linetype = "dashed", color = "gray50", linewidth = 0.5) +
+      annotate("rect",
+        xmin = -Inf, xmax = Inf,
+        ymin = overall_mean - overall_err,
+        ymax = overall_mean + overall_err,
+        fill = "gray50", alpha = 0.15
+      ) +
+      scale_color_manual(
+        name = "Type",
+        values = c("Running" = "steelblue", "Windowed" = "darkorange"),
+        labels = c(
+          "Running" = "Running (cumulative)",
+          "Windowed" = sprintf("Windowed (n=%d)", window_size)
+        )
+      ) +
+      labs(
+        title = sprintf("%s (mean=%.3f±%.3f)", transition_label, overall_mean, overall_err),
+        x = "Measurement Index",
+        y = "Acceptance Rate"
+      ) +
+      ylim(0, 1) +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(size = 10),
+        legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        legend.text = element_text(size = 7)
+      )
+
+    timeseries_plots[[replica_idx]] <- p_ts
+  }
+
+  # Save all timeseries plots to a single PDF
+  # Use gridExtra to properly arrange ggplot objects with legends
+  if (!requireNamespace("gridExtra", quietly = TRUE)) {
+    write_log("gridExtra package not available, saving plots sequentially")
+    pdf(file.path(directory, "acceptance_swap_timeseries.pdf"), width = 10, height = 6)
+    for (i in seq_along(timeseries_plots)) {
+      print(timeseries_plots[[i]])
+    }
+    dev.off()
+  } else {
+    library(gridExtra)
+
+    # Calculate optimal grid dimensions
+    n_plots <- length(timeseries_plots)
+    n_cols <- min(2, n_plots) # Max 2 columns
+    n_rows <- ceiling(n_plots / n_cols)
+
+    pdf(file.path(directory, "acceptance_timeseries.pdf"), width = 12, height = 6 * n_rows)
+    gridExtra::grid.arrange(grobs = timeseries_plots, ncol = n_cols)
+    dev.off()
+  }
+
+  write_log(sprintf("Timeseries plots saved to acceptance_timeseries.pdf (%d transitions)", length(timeseries_plots)))
 }
 
 weighted_mean_errors <- function(values, errors) {
