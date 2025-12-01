@@ -727,7 +727,9 @@ if (!interactive()) {
     directory <- args[1]
     skip_steps <- if (length(args) == 2) as.integer(args[2]) else 0
 
-    assign("WF_LOG_FILE", file.path(directory, "wilson_temp_analysis.log"), envir = .GlobalEnv)
+    logs_dir <- file.path(directory, "logs")
+    if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+    assign("WF_LOG_FILE", file.path(logs_dir, "analysis_wilson_temp.log"), envir = .GlobalEnv)
 
     result <- fit_static_potential(directory, skip_steps)
 

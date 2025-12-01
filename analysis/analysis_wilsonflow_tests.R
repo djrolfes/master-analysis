@@ -734,7 +734,9 @@ plot_topological_charge_samples <- function(data, directory, n_samples = 400, sk
 
 analyze_wilsonflow <- function(directory, skip_steps = 200, target_ad_ft2 = 0.1, target_w = 0.1) {
   # set up logfile for this run
-  assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+  logs_dir <- file.path(directory, "logs")
+  if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+  assign("WF_LOG_FILE", file.path(logs_dir, "analysis_wilsonflow_tests.log"), envir = .GlobalEnv)
   write_log(paste0("analyze_wilsonflow: start for directory=", directory, " skip_steps=", skip_steps, " target_ad_ft2=", target_ad_ft2, " target_w=", target_w))
 
   # Wrap entire analysis in tryCatch so errors are logged
@@ -798,7 +800,9 @@ if (length(args) < 2 || length(args) > 4) {
   stop("Usage: Rscript analysis_wilsonflow_tests.R <directory> <skip_steps> [target_ad_ft2] [target_w]")
 }
 directory <- args[1]
-assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+logs_dir <- file.path(directory, "logs")
+if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+assign("WF_LOG_FILE", file.path(logs_dir, "analysis_wilsonflow_tests.log"), envir = .GlobalEnv)
 skip_steps <- as.integer(args[2])
 target_ad_ft2 <- if (length(args) >= 3) as.numeric(args[3]) else 0.1
 target_w <- if (length(args) >= 4) as.numeric(args[4]) else 0.1

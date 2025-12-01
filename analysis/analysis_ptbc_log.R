@@ -525,6 +525,8 @@ if (length(args) < 1) {
 }
 
 directory <- args[1]
-assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
-skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 50
+logs_dir <- file.path(directory, "logs")
+if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+assign("WF_LOG_FILE", file.path(logs_dir, "analysis_ptbc_log.log"), envir = .GlobalEnv)
+skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
 analyze_ptbc_log(directory, skip_initial = skip_initial)

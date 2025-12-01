@@ -13,7 +13,9 @@ write_log <- function(msg) {
 }
 
 analyze_wilsonflow_improv <- function(directory, filename = "action_densities_clover_cumulative.txt", n_boot = 400) {
-  assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+  logs_dir <- file.path(directory, "logs")
+  if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+  assign("WF_LOG_FILE", file.path(logs_dir, "analysis_wilsonflow_improv.log"), envir = .GlobalEnv)
   write_log(paste0("analyze_wilsonflow_improv: start dir=", directory, " file=", filename, " n_boot=", n_boot))
 
   path <- file.path(directory, filename)
@@ -125,6 +127,8 @@ if (length(args) < 1) {
   stop("Usage: Rscript analysis_wilsonflow_improv.R <directory> [n_boot]")
 }
 directory <- args[1]
-assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+logs_dir <- file.path(directory, "logs")
+if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+assign("WF_LOG_FILE", file.path(logs_dir, "analysis_wilsonflow_improv.log"), envir = .GlobalEnv)
 n_boot <- if (length(args) >= 2) as.integer(args[2]) else 200L
 analyze_wilsonflow_improv(directory, n_boot = n_boot)

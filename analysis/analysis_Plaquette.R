@@ -136,6 +136,8 @@ if (length(args) != 2) {
   stop("Usage: Rscript analysis_plaquette.R <directory> <skip_steps>")
 }
 directory <- args[1]
-assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+logs_dir <- file.path(directory, "logs")
+if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+assign("WF_LOG_FILE", file.path(logs_dir, "analysis_Plaquette.log"), envir = .GlobalEnv)
 skip_steps <- args[2]
 analyze_plaquette(directory, skip_steps = as.integer(skip_steps))

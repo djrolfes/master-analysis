@@ -191,7 +191,9 @@ if (length(args) != 2) {
 }
 directory <- args[1]
 skip_steps <- args[2]
-assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+logs_dir <- file.path(directory, "logs")
+if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+assign("WF_LOG_FILE", file.path(logs_dir, "analysis_SimulationLoggingParams_log_file.log"), envir = .GlobalEnv)
 write_log("analysis_SimulationLoggingParams_log_file.R: starting")
 analyze_simulation_log(directory, skip_steps = as.integer(skip_steps))
 write_log("analysis_SimulationLoggingParams_log_file.R: finished")

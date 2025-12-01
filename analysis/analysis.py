@@ -76,6 +76,11 @@ def analyze_directory(directory, skip_steps="1250"):
             else:
                 print(f"Warning: Did not find '{key}': {filename}")
     
+    # Create logs directory for individual analysis logs
+    logs_dir = os.path.join(directory, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+    print(f"Created logs directory: {logs_dir}")
+    
     # --- Dispatch R Analyses ---
     r_scripts = [
         ["Rscript", "analysis_SimulationLoggingParams_log_file.R", directory, str(skip_steps)],

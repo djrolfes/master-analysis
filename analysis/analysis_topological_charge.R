@@ -54,7 +54,9 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   r_q_squared <- r
   r_q_squared_rounded <- r
   # Configure logfile for this run
-  assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+  logs_dir <- file.path(directory, "logs")
+  if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+  assign("WF_LOG_FILE", file.path(logs_dir, "analysis_topological_charge.log"), envir = .GlobalEnv)
   write_log(paste0("analyze_topological_charge: start directory=", directory, " skip_initial=", skip_initial))
 
   # Read YAML config to find filename
@@ -657,6 +659,8 @@ if (length(args) < 1) {
 }
 
 directory <- args[1]
-assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
+logs_dir <- file.path(directory, "logs")
+if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
+assign("WF_LOG_FILE", file.path(logs_dir, "analysis_topological_charge.log"), envir = .GlobalEnv)
 skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
 analyze_topological_charge(directory, skip_initial = skip_initial)
