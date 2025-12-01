@@ -52,25 +52,20 @@ else
     ./scripts/check_and_install_hadron.sh
 fi
 
-# --- Python Environment Setup ---
+# --- Activate Python Environment (must be created by analysis.sh) ---
+echo "Activating Python virtual environment..."
 if [ ! -d ".venv" ]; then
-    echo "Creating new virtual environment..."
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install --upgrade pip
-    # Install compatible versions to avoid conflicts
-    pip install "numpy>=1.16.5,<1.23.0"
-    pip install pandas PyYAML matplotlib seaborn
-else
-    source .venv/bin/activate
-    # Check if packages are installed, if not install them
-    python3 -c "import pandas, yaml, matplotlib, seaborn" 2>/dev/null || {
-        echo "Installing missing packages..."
-        pip install --upgrade pip
-        pip install "numpy>=1.16.5,<1.23.0"
-        pip install pandas PyYAML matplotlib seaborn
-    }
+    echo "ERROR: .venv not found. Run analysis.sh instead of submitting jobs directly."
+    exit 1
 fi
+
+source .venv/bin/activate
+
+# Verify packages are available
+python3 -c "import pandas, yaml, matplotlib, seaborn, numpy" 2>/dev/null || {
+    echo "ERROR: Required Python packages not installed. Re-run analysis.sh to recreate environment."
+    exit 1
+}
 
 # --- Change into analysis directory ---
 cd analysis

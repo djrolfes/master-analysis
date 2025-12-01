@@ -19,8 +19,30 @@ if [ "$#" -lt 1 ]; then
     exit 1
 fi
 
-# Get the script directory
+# Get the script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# --- Setup Python Environment (once, before submitting jobs) ---
+echo "Setting up Python virtual environment..."
+cd "$PROJECT_ROOT"
+
+if [ -d ".venv" ]; then
+    echo "Removing existing .venv to avoid corruption..."
+    rm -rf .venv
+fi
+
+echo "Creating fresh virtual environment..."
+python3 -m venv .venv
+source .venv/bin/activate
+
+echo "Installing Python packages with compatible versions..."
+pip install --upgrade pip
+pip install "numpy>=1.16.5,<1.23.0"
+pip install pandas PyYAML matplotlib seaborn
+
+echo "Python environment ready."
+echo ""
 
 # Track submitted job IDs
 JOB_IDS=()
