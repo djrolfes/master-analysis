@@ -21,6 +21,9 @@ if [ -n "${SLURM_JOB_ID:-}" ]; then
     # Do NOT load Python module - we use our own venv
 fi
 
+# Clear PYTHONPATH to prevent system packages from being loaded
+unset PYTHONPATH
+
 # --- Parse optional -skip flag ---
 SKIP_STEPS=250
 if [ "$#" -ge 2 ] && [ "$1" = "-skip" ]; then
@@ -59,21 +62,25 @@ if [ ! -d ".venv" ]; then
     exit 1
 fi
 
-# Activate venv (this must come AFTER module loads to override system Python)
+# Activate venv (this must come AFTER module loads and PYTHONPATH is cleared)
 source .venv/bin/activate
 
 # Ensure venv Python is prioritized by prepending to PATH
 export PATH="$(pwd)/.venv/bin:$PATH"
 
+# Double-check PYTHONPATH is not set (venv activation might restore it)
+unset PYTHONPATH
+
 echo "Using Python: $(which python3)"
 echo "Python version: $(python3 --version)"
 echo "Python executable: $(realpath $(which python3))"
 echo "VIRTUAL_ENV: ${VIRTUAL_ENV:-not set}"
+echo "PYTHONPATH: ${PYTHONPATH:-not set}"
 
 # Verify packages are available (after activation)
 echo "Verifying Python packages..."
 echo "Checking numpy location:"
-python3 -c "import numpy; print('numpy location:', numpy.__file__)"
+python3 -c "import numpy; print('numpy location:', numpy.__file__); print('numpy version:', numpy.__version__)"
 python3 -c "import pandas; import yaml; import matplotlib; import seaborn; import numpy; print('All packages loaded successfully')" || {
     echo "ERROR: Required Python packages not available in venv."
     echo "Installed packages:"
