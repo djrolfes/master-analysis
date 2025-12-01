@@ -1,21 +1,38 @@
 #!/bin/bash
 #
 # Shell Script to Dispatch Multiple Analysis Jobs
-# Usage: ./scripts/analysis.sh [-skip <n>] <output_dir1> [<output_dir2> ...]
+# Usage: ./scripts/analysis.sh [-setup] [-skip <n>] <output_dir1> [<output_dir2> ...]
 #
 
 set -euo pipefail
 
-# --- Parse optional -skip flag ---
+# --- Parse optional flags ---
+SETUP_VENV=false
 SKIP_STEPS=250
-if [ "$#" -ge 2 ] && [ "$1" = "-skip" ]; then
-    SKIP_STEPS="$2"
-    shift 2
-fi
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -setup)
+            SETUP_VENV=true
+            shift
+            ;;
+        -skip)
+            if [ "$#" -lt 2 ]; then
+                echo "Error: -skip requires a value"
+                exit 1
+            fi
+            SKIP_STEPS="$2"
+            shift 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 # --- Expect one or more output directories ---
 if [ "$#" -lt 1 ]; then
-    echo "Error: Missing argument. Usage: ./scripts/analysis.sh [-skip <n>] <output_dir1> [<output_dir2> ...]"
+    echo "Error: Missing argument. Usage: ./scripts/analysis.sh [-setup] [-skip <n>] <output_dir1> [<output_dir2> ...]"
     exit 1
 fi
 
@@ -25,14 +42,23 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-# --- Submit Python Environment Setup Job ---
-echo "Submitting Python environment setup job..."
-VENV_JOB_OUTPUT=$(sbatch --parsable "${SCRIPT_DIR}/setup_venv.slurm")
-VENV_JOB_ID=$(echo "$VENV_JOB_OUTPUT" | grep -oP '^\d+' || echo "$VENV_JOB_OUTPUT")
+# --- Conditionally Submit Python Environment Setup Job ---
+VENV_JOB_ID=""
+DEPENDENCY_FLAG=""
 
-echo "Virtual environment setup job submitted: $VENV_JOB_ID"
-echo "Waiting for environment setup to complete..."
-echo ""
+if [ "$SETUP_VENV" = true ]; then
+    echo "Submitting Python environment setup job..."
+    VENV_JOB_OUTPUT=$(sbatch --parsable "${SCRIPT_DIR}/setup_venv.slurm")
+    VENV_JOB_ID=$(echo "$VENV_JOB_OUTPUT" | grep -oP '^\d+' || echo "$VENV_JOB_OUTPUT")
+    
+    echo "Virtual environment setup job submitted: $VENV_JOB_ID"
+    echo "Analysis jobs will wait for environment setup to complete."
+    DEPENDENCY_FLAG="--dependency=afterok:${VENV_JOB_ID}"
+    echo ""
+else
+    echo "Using existing virtual environment (add -setup flag to recreate)"
+    echo ""
+fi
 
 # Track submitted job IDs
 JOB_IDS=()
@@ -53,7 +79,7 @@ for OUTPUT_DIR in "$@"; do
     DIR_NAME="$(basename "$ABS_OUTPUT_DIR")"
     
     JOB_OUTPUT=$(sbatch \
-        --dependency=afterok:${VENV_JOB_ID} \
+        ${DEPENDENCY_FLAG} \
         --job-name="analysis_${DIR_NAME}" \
         --output="output/slurm-analysis-${DIR_NAME}-%j.out" \
         --error="output/slurm-analysis-${DIR_NAME}-%j.err" \
@@ -67,9 +93,16 @@ for OUTPUT_DIR in "$@"; do
 done
 echo ""
 echo "All jobs submitted!"
-echo "Setup job ID: $VENV_JOB_ID"
-echo "Analysis job IDs: ${JOB_IDS[*]}"
-echo ""
-echo "Monitor with: squeue -u \$USER"
-echo "Cancel all with: scancel $VENV_JOB_ID ${JOB_IDS[*]}"
+if [ -n "$VENV_JOB_ID" ]; then
+    echo "Setup job ID: $VENV_JOB_ID"
+    echo "Analysis job IDs: ${JOB_IDS[*]}"
+    echo ""
+    echo "Monitor with: squeue -u \$USER"
+    echo "Cancel all with: scancel $VENV_JOB_ID ${JOB_IDS[*]}"
+else
+    echo "Analysis job IDs: ${JOB_IDS[*]}"
+    echo ""
+    echo "Monitor with: squeue -u \$USER"
+    echo "Cancel all with: scancel ${JOB_IDS[*]}"
+fi
 echo "Cancel all with: scancel ${JOB_IDS[*]}"
