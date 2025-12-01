@@ -54,13 +54,23 @@ fi
 
 # --- Python Environment Setup ---
 if [ ! -d ".venv" ]; then
+    echo "Creating new virtual environment..."
     python3 -m venv .venv
+    source .venv/bin/activate
+    pip install --upgrade pip
+    # Install compatible versions to avoid conflicts
+    pip install "numpy>=1.16.5,<1.23.0"
+    pip install pandas PyYAML matplotlib seaborn
+else
+    source .venv/bin/activate
+    # Check if packages are installed, if not install them
+    python3 -c "import pandas, yaml, matplotlib, seaborn" 2>/dev/null || {
+        echo "Installing missing packages..."
+        pip install --upgrade pip
+        pip install "numpy>=1.16.5,<1.23.0"
+        pip install pandas PyYAML matplotlib seaborn
+    }
 fi
-
-source .venv/bin/activate
-pip install --upgrade pip
-pip install pandas PyYAML
-pip install matplotlib seaborn
 
 # --- Change into analysis directory ---
 cd analysis
