@@ -6,6 +6,9 @@
 
 set -euo pipefail
 
+module purge
+module load Python
+
 # --- Parse optional -skip flag ---
 SKIP_STEPS=250
 if [ "$#" -ge 2 ] && [ "$1" = "-skip" ]; then
