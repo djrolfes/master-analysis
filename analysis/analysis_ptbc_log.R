@@ -116,11 +116,27 @@ compute_per_defect_acceptance <- function(directory, data) {
 }
 
 # Function to analyze acceptance rates
-analyze_acceptance <- function(directory, data) {
+analyze_acceptance <- function(directory, data, skip_initial = 100) {
   if (nrow(data) == 0) {
     write_log("Acceptance analysis skipped: no data.")
     return(NULL)
   }
+
+  # Apply skip to data
+  original_nrow <- nrow(data)
+  if (skip_initial > 0) {
+    data <- data %>% filter(step > skip_initial)
+    write_log(sprintf(
+      "Skipped %d initial steps (skip_initial=%d), using %d remaining steps",
+      original_nrow - nrow(data), skip_initial, nrow(data)
+    ))
+  }
+
+  if (nrow(data) == 0) {
+    write_log("No data remaining after skip. Acceptance analysis aborted.")
+    return(NULL)
+  }
+
   num_defects <- length(data$defects[[1]])
   expected_len <- max(0, num_defects - 1)
 
@@ -312,7 +328,7 @@ analyze_acceptance <- function(directory, data) {
   # Create timeseries plots
   create_acceptance_timeseries(
     directory, swap_attempts_per_replica, mean_swap_acceptance,
-    err_swap_acceptance, rep_sorted, Replica_vec
+    err_swap_acceptance, rep_sorted, Replica_vec, skip_initial
   )
 
   return(plot_data)
@@ -320,7 +336,7 @@ analyze_acceptance <- function(directory, data) {
 
 # Function to create acceptance timeseries plots
 create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, mean_swap_acceptance,
-                                         err_swap_acceptance, rep_sorted, Replica_vec) {
+                                         err_swap_acceptance, rep_sorted, Replica_vec, skip_initial = 0) {
   write_log("Creating timeseries plots for swap transitions...")
 
   # Prepare data for timeseries: need step number and acceptance for each replica
@@ -411,6 +427,20 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
         ymax = overall_mean + overall_err,
         fill = "gray50", alpha = 0.15
       ) +
+
+      # Add vertical line at skip_initial if > 0
+      {
+        if (skip_initial > 0) {
+          list(
+            geom_vline(xintercept = skip_initial, linetype = "dashed", color = "red", linewidth = 0.6),
+            annotate("text",
+              x = skip_initial, y = 0.95,
+              label = sprintf("skip=%d", skip_initial),
+              hjust = -0.1, vjust = 1, color = "red", size = 3
+            )
+          )
+        }
+      } +
       scale_color_manual(
         name = "Type",
         values = c("Running" = "steelblue", "Windowed" = "darkorange"),
@@ -476,12 +506,9 @@ analyze_ptbc_log <- function(directory, skip_initial = 0) {
   config <- read_yaml_config(directory)
   ptbc_data <- read_ptbc_simulation_log(directory)
 
-  if (skip_initial > 0) {
-    ptbc_data <- ptbc_data %>% filter(step > skip_initial)
-  }
   number_defects <- length(ptbc_data$defects[[1]])
-  # Analyze acceptance
-  acceptance_results <- analyze_acceptance(directory, ptbc_data)
+  # Analyze acceptance (skip will be applied inside the function)
+  acceptance_results <- analyze_acceptance(directory, ptbc_data, skip_initial)
 
   if (!is.null(acceptance_results)) {
     write_log("Acceptance analysis results:")
@@ -499,5 +526,5 @@ if (length(args) < 1) {
 
 directory <- args[1]
 assign("WF_LOG_FILE", file.path(directory, "analysis_debug.log"), envir = .GlobalEnv)
-skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
+skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 50
 analyze_ptbc_log(directory, skip_initial = skip_initial)
