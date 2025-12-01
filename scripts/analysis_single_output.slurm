@@ -52,18 +52,21 @@ else
     ./scripts/check_and_install_hadron.sh
 fi
 
-# --- Activate Python Environment (must be created by analysis.sh) ---
+# --- Activate Python Environment (must be created by setup_venv.slurm) ---
 echo "Activating Python virtual environment..."
 if [ ! -d ".venv" ]; then
-    echo "ERROR: .venv not found. Run analysis.sh instead of submitting jobs directly."
+    echo "ERROR: .venv not found. Run analysis.sh to create environment first."
     exit 1
 fi
 
 source .venv/bin/activate
 
-# Verify packages are available
-python3 -c "import pandas, yaml, matplotlib, seaborn, numpy" 2>/dev/null || {
-    echo "ERROR: Required Python packages not installed. Re-run analysis.sh to recreate environment."
+# Verify packages are available (after activation)
+echo "Verifying Python packages..."
+python3 -c "import pandas, yaml, matplotlib, seaborn, numpy; print('All packages loaded successfully')" || {
+    echo "ERROR: Required Python packages not available in venv."
+    echo "Installed packages:"
+    pip list
     exit 1
 }
 
