@@ -6,9 +6,6 @@
 
 set -euo pipefail
 
-module purge
-module load Python
-
 # --- Parse optional -skip flag ---
 SKIP_STEPS=250
 if [ "$#" -ge 2 ] && [ "$1" = "-skip" ]; then
@@ -26,25 +23,15 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# --- Setup Python Environment (once, before submitting jobs) ---
-echo "Setting up Python virtual environment..."
 cd "$PROJECT_ROOT"
 
-if [ -d ".venv" ]; then
-    echo "Removing existing .venv to avoid corruption..."
-    rm -rf .venv
-fi
+# --- Submit Python Environment Setup Job ---
+echo "Submitting Python environment setup job..."
+VENV_JOB_OUTPUT=$(sbatch --parsable "${SCRIPT_DIR}/setup_venv.slurm")
+VENV_JOB_ID=$(echo "$VENV_JOB_OUTPUT" | grep -oP '^\d+' || echo "$VENV_JOB_OUTPUT")
 
-echo "Creating fresh virtual environment..."
-python3 -m venv .venv
-source .venv/bin/activate
-
-echo "Installing Python packages with compatible versions..."
-pip install --upgrade pip
-pip install "numpy>=1.16.5,<1.23.0"
-pip install pandas PyYAML matplotlib seaborn
-
-echo "Python environment ready."
+echo "Virtual environment setup job submitted: $VENV_JOB_ID"
+echo "Waiting for environment setup to complete..."
 echo ""
 
 # Track submitted job IDs
@@ -66,6 +53,7 @@ for OUTPUT_DIR in "$@"; do
     DIR_NAME="$(basename "$ABS_OUTPUT_DIR")"
     
     JOB_OUTPUT=$(sbatch \
+        --dependency=afterok:${VENV_JOB_ID} \
         --job-name="analysis_${DIR_NAME}" \
         --output="output/slurm-analysis-${DIR_NAME}-%j.out" \
         --error="output/slurm-analysis-${DIR_NAME}-%j.err" \
@@ -77,10 +65,11 @@ for OUTPUT_DIR in "$@"; do
     
     echo "Submitted job $JOB_ID for: $ABS_OUTPUT_DIR"
 done
-
 echo ""
 echo "All jobs submitted!"
-echo "Job IDs: ${JOB_IDS[*]}"
+echo "Setup job ID: $VENV_JOB_ID"
+echo "Analysis job IDs: ${JOB_IDS[*]}"
 echo ""
 echo "Monitor with: squeue -u \$USER"
+echo "Cancel all with: scancel $VENV_JOB_ID ${JOB_IDS[*]}"
 echo "Cancel all with: scancel ${JOB_IDS[*]}"
