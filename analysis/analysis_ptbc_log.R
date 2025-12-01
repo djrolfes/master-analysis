@@ -348,15 +348,21 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
   # Set window size for moving average (e.g., 50 measurements)
   window_size <- min(50, max(10, floor(length(swap_attempts_per_replica[[1]]) / 20)))
   write_log(sprintf("Using window size of %d for moving average", window_size))
+  write_log(sprintf("Processing %d replica timeseries...", num_replicas))
 
   for (replica_idx in seq_along(swap_attempts_per_replica)) {
+    write_log(sprintf("Processing replica %d/%d...", replica_idx, num_replicas))
+    
     accepts <- swap_attempts_per_replica[[replica_idx]]
     steps <- seq_along(accepts)
+    write_log(sprintf("  Replica %d: %d data points", replica_idx, length(accepts)))
 
     # Calculate running acceptance (cumulative mean)
+    write_log(sprintf("  Computing running acceptance for replica %d...", replica_idx))
     running_acceptance <- cumsum(accepts) / seq_along(accepts)
 
     # Calculate running standard deviation
+    write_log(sprintf("  Computing running standard deviation for replica %d...", replica_idx))
     running_std <- sapply(seq_along(accepts), function(i) {
       if (i == 1) {
         return(0)
@@ -365,6 +371,7 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
     })
 
     # Calculate windowed acceptance (moving average) and windowed std
+    write_log(sprintf("  Computing windowed statistics for replica %d...", replica_idx))
     windowed_acceptance <- rep(NA, length(accepts))
     windowed_std <- rep(NA, length(accepts))
     for (i in seq_along(accepts)) {
@@ -373,6 +380,7 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
       windowed_acceptance[i] <- mean(window_data)
       windowed_std[i] <- sd(window_data)
     }
+    write_log(sprintf("  Finished windowed statistics for replica %d", replica_idx))
 
     # Determine which transition this is (between which defects)
     if (replica_idx <= length(Replica_vec)) {
@@ -385,6 +393,7 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
       transition_label <- sprintf("Replica %d", replica_idx)
     }
 
+    write_log(sprintf("  Creating data frame for replica %d...", replica_idx))
     ts_data <- data.frame(
       step = steps,
       raw_acceptance = accepts,
@@ -394,10 +403,11 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
       windowed_std = windowed_std
     )
 
-    # Get overall mean and error for this transition
     overall_mean <- mean_swap_acceptance[replica_idx]
     overall_err <- err_swap_acceptance[replica_idx]
 
+    write_log(sprintf("  Creating plot for replica %d...", replica_idx))
+    p_ts <- ggplot(ts_data, aes(x = step)) +
     p_ts <- ggplot(ts_data, aes(x = step)) +
       # Running acceptance with error band
       geom_ribbon(
@@ -460,10 +470,10 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
         plot.title = element_text(size = 10),
         legend.position = "bottom",
         legend.title = element_text(size = 8),
-        legend.text = element_text(size = 7)
       )
 
     timeseries_plots[[replica_idx]] <- p_ts
+    write_log(sprintf("  Completed plot for replica %d", replica_idx))
   }
 
   # Save all timeseries plots to a single PDF
@@ -472,9 +482,11 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
     write_log("gridExtra package not available, saving plots sequentially")
     pdf(file.path(directory, "acceptance_swap_timeseries.pdf"), width = 10, height = 6)
     for (i in seq_along(timeseries_plots)) {
+      write_log(sprintf("  Printing plot %d/%d to PDF...", i, length(timeseries_plots)))
       print(timeseries_plots[[i]])
     }
     dev.off()
+    write_log("PDF saved (sequential mode)")
   } else {
     library(gridExtra)
 
@@ -483,8 +495,12 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
     n_cols <- min(2, n_plots) # Max 2 columns
     n_rows <- ceiling(n_plots / n_cols)
 
+    write_log(sprintf("Arranging %d plots in %d x %d grid...", n_plots, n_rows, n_cols))
     pdf(file.path(directory, "acceptance_timeseries.pdf"), width = 12, height = 6 * n_rows)
     gridExtra::grid.arrange(grobs = timeseries_plots, ncol = n_cols)
+    dev.off()
+    write_log("PDF saved (grid mode)")
+  } gridExtra::grid.arrange(grobs = timeseries_plots, ncol = n_cols)
     dev.off()
   }
 
