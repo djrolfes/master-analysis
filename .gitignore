@@ -6,5 +6,8 @@ output
 analysis/*.log
 analysis/*.pdf
 example_data/*/
+example_data/*
 analysis/__pycache__/
 example_data/wilson_temp_output.txt
+analysis/local/
+*.code-workspace

@@ -8,7 +8,7 @@
 #SBATCH --time=02:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --exclude=lnode[10-12],lcpunode[01-02]
 
