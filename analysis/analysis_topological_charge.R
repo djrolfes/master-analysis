@@ -138,6 +138,12 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   timeseries_plot <- ggplot(data, aes(x = step, y = topo)) +
     geom_line(color = "steelblue") +
     geom_point(size = 0.8, alpha = 0.7) +
+    geom_vline(xintercept = skip_initial, linetype = "dashed", color = "red", linewidth = 0.8) +
+    annotate("text",
+      x = skip_initial, y = max(data$topo, na.rm = TRUE),
+      label = sprintf("skip=%d", skip_initial),
+      hjust = -0.1, vjust = 1, color = "red", size = 3.5
+    ) +
     labs(title = "Topological Charge vs HMC Step", x = "HMC Step", y = "Topological Charge") +
     theme_minimal()
 
