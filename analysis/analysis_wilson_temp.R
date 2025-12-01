@@ -732,6 +732,7 @@ if (!interactive()) {
     assign("WF_LOG_FILE", file.path(logs_dir, "analysis_wilson_temp.log"), envir = .GlobalEnv)
 
     result <- fit_static_potential(directory, skip_steps)
+    write_log("=== Analysis completed successfully ===")
 
     if (!is.null(result) && !is.null(result$fit_params)) {
         cat("\n=== Static Potential Fit Results ===\n")

@@ -807,3 +807,4 @@ skip_steps <- as.integer(args[2])
 target_ad_ft2 <- if (length(args) >= 3) as.numeric(args[3]) else 0.1
 target_w <- if (length(args) >= 4) as.numeric(args[4]) else 0.1
 analyze_wilsonflow(directory, skip_steps = skip_steps, target_ad_ft2 = target_ad_ft2, target_w = target_w)
+write_log("=== Analysis completed successfully ===")

@@ -117,3 +117,4 @@ if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
 assign("WF_LOG_FILE", file.path(logs_dir, "analysis_wilsonflow_details.log"), envir = .GlobalEnv)
 skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
 analyze_wilsonflow_details(directory, skip_initial = skip_initial)
+write_log("=== Analysis completed successfully ===")

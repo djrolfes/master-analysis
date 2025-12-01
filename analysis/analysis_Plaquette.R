@@ -141,3 +141,4 @@ if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
 assign("WF_LOG_FILE", file.path(logs_dir, "analysis_Plaquette.log"), envir = .GlobalEnv)
 skip_steps <- args[2]
 analyze_plaquette(directory, skip_steps = as.integer(skip_steps))
+write_log("=== Analysis completed successfully ===")

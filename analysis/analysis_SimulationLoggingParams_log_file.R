@@ -197,3 +197,4 @@ assign("WF_LOG_FILE", file.path(logs_dir, "analysis_SimulationLoggingParams_log_
 write_log("analysis_SimulationLoggingParams_log_file.R: starting")
 analyze_simulation_log(directory, skip_steps = as.integer(skip_steps))
 write_log("analysis_SimulationLoggingParams_log_file.R: finished")
+write_log("=== Analysis completed successfully ===")

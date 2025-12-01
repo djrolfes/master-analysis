@@ -132,3 +132,4 @@ if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
 assign("WF_LOG_FILE", file.path(logs_dir, "analysis_wilsonflow_improv.log"), envir = .GlobalEnv)
 n_boot <- if (length(args) >= 2) as.integer(args[2]) else 200L
 analyze_wilsonflow_improv(directory, n_boot = n_boot)
+write_log("=== Analysis completed successfully ===")
