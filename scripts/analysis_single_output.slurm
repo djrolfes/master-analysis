@@ -62,11 +62,18 @@ fi
 # Activate venv (this must come AFTER module loads to override system Python)
 source .venv/bin/activate
 
+# Ensure venv Python is prioritized by prepending to PATH
+export PATH="$(pwd)/.venv/bin:$PATH"
+
 echo "Using Python: $(which python3)"
 echo "Python version: $(python3 --version)"
+echo "Python executable: $(realpath $(which python3))"
+echo "VIRTUAL_ENV: ${VIRTUAL_ENV:-not set}"
 
 # Verify packages are available (after activation)
 echo "Verifying Python packages..."
+echo "Checking numpy location:"
+python3 -c "import numpy; print('numpy location:', numpy.__file__)"
 python3 -c "import pandas; import yaml; import matplotlib; import seaborn; import numpy; print('All packages loaded successfully')" || {
     echo "ERROR: Required Python packages not available in venv."
     echo "Installed packages:"
