@@ -1,3 +1,30 @@
+"""
+Analysis orchestration for lattice QCD simulation outputs.
+
+This module provides functions to analyze klft simulation results, including:
+- Standard analysis of all observable files (plaquette, topological charge, etc.)
+- Parameter scanning for topological charge autocorrelation analysis
+
+Parameter Scanning:
+-------------------
+Use generate_topological_charge_scan() to run topological charge analysis with
+multiple parameter combinations for uwerrprimary autocorrelation analysis:
+
+    from analysis import generate_topological_charge_scan
+    
+    commands = generate_topological_charge_scan(
+        directory='output_dir/',
+        skip_steps=250,
+        s_values=[1.5, 2.0, 2.5],
+        s_squared_values=[3.0, 4.0, 5.0],
+        r_values=[1, 2, 4]
+    )
+    
+Output files will have parameter suffixes like: _s1.50_s2_3.00_r1.pdf
+Default parameters (s=2.5, s²=5.0, r=1) produce files without suffix for
+backward compatibility.
+"""
+
 import os
 import sys
 import yaml
@@ -36,6 +63,59 @@ def read_yaml_config(yaml_path):
         raise FileNotFoundError(f"YAML file not found: {yaml_path}")
     with open(yaml_path, 'r') as f:
         return yaml.safe_load(f)
+
+def generate_topological_charge_scan(directory, skip_steps, s_values=None, s_squared_values=None, r_values=None):
+    """
+    Generate a list of Rscript commands for scanning topological charge analysis parameters.
+    
+    Args:
+        directory: Output directory path
+        skip_steps: Number of initial steps to skip
+        s_values: List of S parameter values for uwerrprimary (default: [2.5])
+        s_squared_values: List of S_squared parameter values for Q^2 analysis (default: [5.0])
+        r_values: List of replica values (default: [1])
+    
+    Returns:
+        List of command lists suitable for subprocess.run()
+    """
+    if s_values is None:
+        s_values = [2.5]
+    if s_squared_values is None:
+        s_squared_values = [5.0]
+    if r_values is None:
+        r_values = [1]
+    
+    # Create subdirectory for scan results
+    scan_dir = os.path.join(directory, "topological_charge_scan")
+    os.makedirs(scan_dir, exist_ok=True)
+    print(f"Created scan directory: {scan_dir}")
+    
+    # Generate parameter combinations
+    # Note: s and s_squared are independent (s for Q, s_squared for Q²)
+    # so we pair them up rather than taking all cross products
+    commands = []
+    
+    # Ensure all lists have the same length for pairing
+    max_len = max(len(s_values), len(s_squared_values))
+    s_list = s_values + [s_values[-1]] * (max_len - len(s_values))
+    s_squared_list = s_squared_values + [s_squared_values[-1]] * (max_len - len(s_squared_values))
+    
+    for s, s_squared in zip(s_list, s_squared_list):
+        for r in r_values:
+            cmd = [
+                "Rscript", 
+                "analysis_topological_charge.R",
+                directory,
+                str(skip_steps),
+                str(s),
+                str(s_squared),
+                str(r)
+            ]
+            commands.append(cmd)
+    
+    print(f"Generated {len(commands)} parameter combinations for topological charge analysis")
+    print(f"  (pairing {len(s_list)} s values with {len(s_squared_list)} s_squared values, × {len(r_values)} r values)")
+    return commands
 
 def analyze_directory(directory, skip_steps="1250"):
     """
@@ -80,6 +160,19 @@ def analyze_directory(directory, skip_steps="1250"):
     logs_dir = os.path.join(directory, "logs")
     os.makedirs(logs_dir, exist_ok=True)
     print(f"Created logs directory: {logs_dir}")
+
+    s_values = [1.0, 1.5, 2.0, 2.5]           # Window parameter S for uwerrprimary
+    s_squared_values = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 6.0]   # Window parameter for Q^2 analysis
+    r_values = [1, 2, 4]                  # Number of replicas
+    
+    # Generate all commands
+    commands = generate_topological_charge_scan(
+        directory,
+        skip_steps=skip_steps,
+        s_values=s_values,
+        s_squared_values=s_squared_values,
+        r_values=r_values
+    )
     
     # --- Dispatch R Analyses ---
     r_scripts = [
@@ -90,10 +183,11 @@ def analyze_directory(directory, skip_steps="1250"):
         ["Rscript", "analysis_wilson_temp.R", directory, str(skip_steps)],
         # ["Rscript", "analysis_wilsonflow_improv.R", directory, str(skip_steps)],
         ["Rscript", "analysis_W_temp.R", directory],
-        ["Rscript", "analysis_topological_charge.R", directory, str(skip_steps)],
+        # ["Rscript", "analysis_topological_charge.R", directory, str(skip_steps)],
         ["Rscript", "analysis_wilsonflow_details.R", directory, str(skip_steps)],
         ["Rscript", "analysis_ptbc_log.R", directory, str(skip_steps)],
     ]
+    r_scripts.extend(commands)
 
     # Set the R_LIBS_USER environment variable to match the library path in check_and_install_hadron.sh
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

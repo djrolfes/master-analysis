@@ -42,22 +42,27 @@ safe_computeacf <- function(data, W.max, label = "data") {
   return(result)
 }
 
-analyze_topological_charge <- function(directory, skip_initial = 0) {
-  s <- 2.5
+analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_squared = 5.0, r = 1) {
+  # Apply parameters to all analyses
   s_q <- s
   s_q_rounded <- s
-  s_q_squared <- s + 2.5
-  s_q_squared_rounded <- s + 2.5
-  r <- 4
+  s_q_squared <- s_squared
+  s_q_squared_rounded <- s_squared
   r_q <- r
   r_q_rounded <- r
   r_q_squared <- r
   r_q_squared_rounded <- r
+
   # Configure logfile for this run
-  logs_dir <- file.path(directory, "logs")
+  write_log(paste0("analyze_topological_charge: start directory=", directory, " skip_initial=", skip_initial, " s=", s, " s_squared=", s_squared, " r=", r))
+  output_dir <- file.path(directory, "topological_charge_scan")
+  logs_dir <- file.path(output_dir, "logs")
   if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
-  assign("WF_LOG_FILE", file.path(logs_dir, "analysis_topological_charge.log"), envir = .GlobalEnv)
-  write_log(paste0("analyze_topological_charge: start directory=", directory, " skip_initial=", skip_initial))
+  if (!dir.exists(output_dir)) dir.create(output_dir, recursive = TRUE)
+  param_suffix <- sprintf("_s%.2f_s2_%.2f_r%d", s, s_squared, r)
+  assign("WF_LOG_FILE", file.path(logs_dir, paste0("analysis_topological_charge", param_suffix, ".log")), envir = .GlobalEnv)
+  write_log(paste0("Using custom parameters: outputs in ", output_dir))
+
 
   # Read YAML config to find filename
   cfg <- tryCatch(
@@ -149,7 +154,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
     labs(title = "Topological Charge vs HMC Step", x = "HMC Step", y = "Topological Charge") +
     theme_minimal()
 
-  out_ts_pdf <- file.path(directory, "topological_charge_timeseries.pdf")
+  out_ts_pdf <- file.path(output_dir, paste0("topological_charge_timeseries", param_suffix, ".pdf"))
   write_log(paste0("analyze_topological_charge: saving timeseries plot to ", out_ts_pdf))
   tryCatch(
     {
@@ -165,8 +170,8 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   # Filter data first (bootstrap.analysis doesn't have a skip parameter)
   data_for_boot <- data$topo[data$step > skip_initial]
 
-  out_boot_pdf <- file.path(directory, "topological_charge_bootstrap.pdf")
-  out_boot_txt <- file.path(directory, "topological_charge_bootstrap.txt")
+  out_boot_pdf <- file.path(output_dir, paste0("topological_charge_bootstrap", param_suffix, ".pdf"))
+  out_boot_txt <- file.path(output_dir, paste0("topological_charge_bootstrap", param_suffix, ".txt"))
   write_log(paste0("analyze_topological_charge: computing bootstrap.analysis on ", length(data_for_boot), " points and saving to ", out_boot_pdf))
 
   boot_original <- NULL
@@ -179,10 +184,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
         boot_original <- hadron::bootstrap.analysis(data_for_boot, pl = TRUE)
       })
       dev.off()
-
-      # Write textual output to .txt file
-      writeLines(boot_output_text, con = out_boot_txt)
-      write_log("analyze_topological_charge: bootstrap plot and text output saved")
+      write_log("analyze_topological_charge: bootstrap plot output saved")
     },
     error = function(e) {
       write_log(paste0("analyze_topological_charge: ERROR running bootstrap.analysis: ", conditionMessage(e)))
@@ -234,8 +236,8 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   write_log(paste0("analyze_topological_charge: uwerr results - tauint=", tauint, ", dtauint=", dtauint))
 
   # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
-  autocorr_filename <- "topological_charge_autocorr_Q.pdf"
-  out_ac_pdf <- file.path(directory, autocorr_filename)
+  autocorr_filename <- paste0("topological_charge_autocorr_Q", param_suffix, ".pdf")
+  out_ac_pdf <- file.path(output_dir, autocorr_filename)
   write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
   tryCatch(
     {
@@ -250,22 +252,8 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   )
 
   # Save summary to a small text file
-  summary_file <- file.path(directory, "topological_charge_autocorr_summary.txt")
-  # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
-  autocorr_filename <- "topological_charge_autocorr_Q.pdf"
-  out_ac_pdf <- file.path(directory, autocorr_filename)
-  write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
-  tryCatch(
-    {
-      pdf(out_ac_pdf, width = 8, height = 6)
-      plot(uw)
-      dev.off()
-      write_log("analyze_topological_charge: autocorr plot saved")
-    },
-    error = function(e) {
-      write_log(paste0("ERROR saving autocorr plot: ", conditionMessage(e)))
-    }
-  )
+  summary_file <- file.path(output_dir, paste0("topological_charge_autocorr_summary", param_suffix, ".txt"))
+  # Note: autocorr_filename already set above with param_suffix
   write_log(paste0("analyze_topological_charge: writing summary to ", summary_file))
 
   # Compute ACF using computeacf (with safe wrapper for cluster compatibility)
@@ -359,8 +347,8 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 
 
   # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
-  autocorr_filename <- "topological_charge_autocorr_Q_rounded.pdf"
-  out_ac_pdf <- file.path(directory, autocorr_filename)
+  autocorr_filename <- paste0("topological_charge_autocorr_Q_rounded", param_suffix, ".pdf")
+  out_ac_pdf <- file.path(output_dir, autocorr_filename)
   write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
   tryCatch(
     {
@@ -465,8 +453,8 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   )
 
   # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
-  autocorr_filename <- "topological_charge_autocorr_Q_squared.pdf"
-  out_ac_pdf <- file.path(directory, autocorr_filename)
+  autocorr_filename <- paste0("topological_charge_autocorr_Q_squared", param_suffix, ".pdf")
+  out_ac_pdf <- file.path(output_dir, autocorr_filename)
   write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
   tryCatch(
     {
@@ -571,8 +559,8 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
   )
 
   # Save the uwerr plot to PDF (plot method for uwerr)autocorr.pdf
-  autocorr_filename <- "topological_charge_autocorr_rounded_Q_squared.pdf"
-  out_ac_pdf <- file.path(directory, autocorr_filename)
+  autocorr_filename <- paste0("topological_charge_autocorr_rounded_Q_squared", param_suffix, ".pdf")
+  out_ac_pdf <- file.path(output_dir, autocorr_filename)
   write_log(paste0("analyze_topological_charge: saving autocorr plot to ", out_ac_pdf))
   tryCatch(
     {
@@ -655,7 +643,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0) {
 # CLI entrypoint
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
-  stop("Usage: Rscript analysis_topological_charge.R <directory> [skip_initial]")
+  stop("Usage: Rscript analysis_topological_charge.R <directory> [skip_initial] [s] [s_squared] [r]")
 }
 
 directory <- args[1]
@@ -663,5 +651,8 @@ logs_dir <- file.path(directory, "logs")
 if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
 assign("WF_LOG_FILE", file.path(logs_dir, "analysis_topological_charge.log"), envir = .GlobalEnv)
 skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
-analyze_topological_charge(directory, skip_initial = skip_initial)
+s <- if (length(args) >= 3) as.numeric(args[3]) else 2.5
+s_squared <- if (length(args) >= 4) as.numeric(args[4]) else 5.0
+r <- if (length(args) >= 5) as.integer(args[5]) else 1
+analyze_topological_charge(directory, skip_initial = skip_initial, s = s, s_squared = s_squared, r = r)
 write_log("=== Analysis completed successfully ===")
