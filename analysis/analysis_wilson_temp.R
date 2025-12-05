@@ -66,7 +66,7 @@ find_best_plateau <- function(effmass_obj, min_window = 5, max_t2_frac = 0.8,
 
                         # Q-value penalty: penalize values too close to 0 or 1
                         # Optimal Q-value is around 0.5
-                        qval_penalty <- 2 * abs(qval - 0.5)
+                        qval_penalty <- abs(1 - qval) # testing
 
                         # error penalty: penalize fits with large standard error
                         error_penalty <- abs(dm / m)
@@ -75,7 +75,7 @@ find_best_plateau <- function(effmass_obj, min_window = 5, max_t2_frac = 0.8,
                         total_elements <- length(effmass_obj$effMass.tsboot[, t1:t2])
                         na_fraction <- na_count / total_elements
 
-                        score <- window_score - chi2_penalty - qval_penalty - 8 * error_penalty - 100 * na_fraction
+                        score <- window_score - chi2_penalty - 0.5 * qval_penalty - 2 * error_penalty - 100 * na_fraction
 
                         results <- rbind(results, data.frame(
                             t1 = t1, t2 = t2, window = window_score,
@@ -177,6 +177,20 @@ fit_static_potential <- function(directory, skip_steps = 0) {
     v_of_L_data <- data.frame()
     wilson_fits <- list() # Store fit objects for plotting
 
+    # Load or create plateau override file
+    plateau_override_file <- file.path(plots_dir, "plateau_override.txt")
+    plateau_overrides <- data.frame(L = integer(), t1 = integer(), t2 = integer())
+
+    if (file.exists(plateau_override_file)) {
+        write_log(paste0("fit_static_potential: loading plateau overrides from ", plateau_override_file))
+        plateau_overrides <- read.table(plateau_override_file, header = TRUE, comment.char = "#")
+    } else {
+        write_log(paste0("fit_static_potential: no plateau override file found, will create one after first run"))
+    }
+
+    # Store automatically detected plateaus for generating override file
+    detected_plateaus <- data.frame(L = integer(), t1 = integer(), t2 = integer())
+
     for (i in seq_along(unique_L)) {
         L_val <- unique_L[i]
         L_matrix <- w_matrices[[i]]
@@ -201,20 +215,42 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 wloop <- cf_orig(cf = L_matrix)
                 wloop <- cf_meta(wloop, nrObs = 1, Time = Time_extent, symmetrise = FALSE)
 
-                boot.R <- 32
-                dbboot.R <- 19
+                boot.R <- 200
+                dbboot.R <- 100
                 wloop.boot <- bootstrap.cf(wloop, boot.R = boot.R, boot.l = 2)
                 wloop.boot <- double_bootstrap.cf(wloop.boot, dbboot.R = dbboot.R)
 
                 # Calculate bootstrap effective mass
                 wloop.efm <- bootstrap.effectivemass(wloop.boot, type = "log")
 
-                # Find best plateau and fit
-                wloop.efm.fit <- find_best_plateau(wloop.efm,
-                    min_window = 3, max_t2_frac = 0.7,
-                    chi2_target = 1.0, chi2_tolerance = 0.9,
-                    min_qval = 0.1, max_qval = 0.9
-                )
+                # Check if there's an override for this L value
+                override_idx <- which(plateau_overrides$L == L_val)
+
+                if (length(override_idx) > 0) {
+                    # Use overridden plateau range
+                    t1_override <- plateau_overrides$t1[override_idx]
+                    t2_override <- plateau_overrides$t2[override_idx]
+                    write_log(paste0("fit_static_potential: L=", L_val, " using OVERRIDE plateau: t1=", t1_override, ", t2=", t2_override))
+
+                    wloop.efm.fit <- fit.effectivemass(wloop.efm, t1 = t1_override, t2 = t2_override, useCov = TRUE)
+
+                    # Store the override in detected_plateaus
+                    detected_plateaus <- rbind(detected_plateaus, data.frame(L = L_val, t1 = t1_override, t2 = t2_override))
+                } else {
+                    # Find best plateau automatically
+                    wloop.efm.fit <- find_best_plateau(wloop.efm,
+                        min_window = 3, max_t2_frac = 0.7,
+                        chi2_target = 1.0, chi2_tolerance = 0.9,
+                        min_qval = 0.1, max_qval = 0.9
+                    )
+
+                    # Store detected plateau for override file generation
+                    detected_plateaus <- rbind(detected_plateaus, data.frame(
+                        L = L_val,
+                        t1 = wloop.efm.fit$t1,
+                        t2 = wloop.efm.fit$t2
+                    ))
+                }
 
                 # Save fitted effective mass plot
                 efm_fit_plot_file <- file.path(plots_dir, sprintf("L_%d_effective_mass_fit.pdf", L_val))
@@ -268,6 +304,23 @@ fit_static_potential <- function(directory, skip_steps = 0) {
     }
 
     write_log(paste0("fit_static_potential: successfully fit V(L) for ", nrow(v_of_L_data), " L values"))
+
+    # Generate/update plateau override file if it didn't exist
+    if (!file.exists(plateau_override_file) && nrow(detected_plateaus) > 0) {
+        write_log(paste0("fit_static_potential: creating plateau override file: ", plateau_override_file))
+
+        sink(plateau_override_file)
+        cat("# Plateau Override File\n")
+        cat("# Edit the t1 and t2 values below to manually set plateau ranges for each L value\n")
+        cat("# Lines starting with # are comments and will be ignored\n")
+        cat("# Format: L  t1  t2\n")
+        cat("#\n")
+        write.table(detected_plateaus, row.names = FALSE, col.names = TRUE, quote = FALSE)
+        sink()
+
+        write_log(paste0("fit_static_potential: wrote ", nrow(detected_plateaus), " plateau ranges to override file"))
+        write_log("fit_static_potential: edit plateau_override.txt and rerun to use custom plateau ranges")
+    }
 
     # Save combined V(L) data to text file
     v_of_L_file <- file.path(plots_dir, "V_of_L_data.txt")
@@ -433,7 +486,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     a_fm, a_fm_error
                 ),
                 col.line = "black",
-                col.band = "gray",
+                col.band = "black",
                 opacity.band = 0.5,
                 lwd = 2,
                 plot.range = plot_range,
