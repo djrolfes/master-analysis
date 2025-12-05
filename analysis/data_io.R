@@ -3,15 +3,21 @@ library(yaml)
 # Function to find the YAML file in the directory
 find_yaml_file <- function(directory) {
   yaml_files <- list.files(directory, pattern = "\\.yaml$", full.names = TRUE)
-  # if (length(yaml_files) != 1) {
-  #  stop(paste("Error: There must be exactly one .yaml file in the directory:", directory))
-  # }
+  if (length(yaml_files) == 0) {
+    stop(paste("Error: No .yaml file found in directory:", directory))
+  }
+  if (length(yaml_files) > 1) {
+    warning(paste("Multiple .yaml files found in directory:", directory, ". Using the first one:", basename(yaml_files[1])))
+  }
   yaml_files[1]
 }
 
 # Function to read the YAML configuration
 read_yaml_config <- function(directory) {
   yaml_path <- find_yaml_file(directory)
+  if (is.na(yaml_path) || !file.exists(yaml_path)) {
+    stop(paste("Error: YAML file not found or invalid path:", yaml_path, "in directory:", directory))
+  }
   yaml.load_file(yaml_path)
 }
 

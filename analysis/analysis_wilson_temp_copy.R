@@ -233,17 +233,24 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 dV <- wloop.efm.fit$effmassfit$se
                 chisqr_per_dof <- wloop.efm.fit$chisqr / wloop.efm.fit$dof
 
+                # Extract bootstrap samples for V(L) from the fit
+                # wloop.efm.fit$effmassfit$t is a matrix: rows=bootstrap samples, cols=[parameter, chisqr]
+                # We only want the first column (the fitted parameter V)
+                V_bootstrap_samples <- wloop.efm.fit$effmassfit$t[, 1]
+
                 write_log(paste0(
                     "fit_static_potential: L=", L_val, " fit results: V=",
                     round(V, 6), " ± ", round(dV, 6),
                     ", chi2/dof=", round(chisqr_per_dof, 3),
-                    " (chi2=", round(wloop.efm.fit$chisqr, 2), ", dof=", wloop.efm.fit$dof, ")"
+                    " (chi2=", round(wloop.efm.fit$chisqr, 2), ", dof=", wloop.efm.fit$dof, ")",
+                    ", bootstrap samples: ", length(V_bootstrap_samples)
                 ))
 
                 v_of_L_data <- rbind(v_of_L_data, data.frame(
                     L = L_val,
                     V = V,
-                    V_error = dV
+                    V_error = dV,
+                    boot_samples = I(list(V_bootstrap_samples))
                 ))
 
                 # Store fit object for later use
@@ -267,17 +274,35 @@ fit_static_potential <- function(directory, skip_steps = 0) {
     write_log(paste0("fit_static_potential: writing V(L) data to ", v_of_L_file))
     sink(v_of_L_file)
     cat("=== Extracted Static Potential V(L) for all L values ===\n\n")
-    cat(sprintf("%-10s %-20s %-20s\n", "L", "V(L)", "V_error"))
-    cat(strrep("-", 50), "\n")
+    cat(sprintf("%-10s %-20s %-20s %-15s\n", "L", "V(L)", "V_error", "N_boot"))
+    cat(strrep("-", 65), "\n")
     for (i in 1:nrow(v_of_L_data)) {
         cat(sprintf(
-            "%-10d %-20.10f %-20.10f\n",
+            "%-10d %-20.10f %-20.10f %-15d\n",
             v_of_L_data$L[i],
             v_of_L_data$V[i],
-            v_of_L_data$V_error[i]
+            v_of_L_data$V_error[i],
+            length(v_of_L_data$boot_samples[[i]])
         ))
     }
     sink()
+
+    # Save raw bootstrap samples for V(L) to a file
+    boot_samples_file <- file.path(plots_dir, "V_of_L_bootstrap_samples.txt")
+    write_log(paste0("fit_static_potential: writing V(L) bootstrap samples to ", boot_samples_file))
+
+    # Create matrix of bootstrap samples (rows = bootstrap replicas, cols = L values)
+    n_boot <- length(v_of_L_data$boot_samples[[1]])
+    boot_matrix <- matrix(NA, nrow = n_boot, ncol = nrow(v_of_L_data))
+    colnames(boot_matrix) <- paste0("L_", v_of_L_data$L)
+
+    for (i in 1:nrow(v_of_L_data)) {
+        boot_matrix[, i] <- v_of_L_data$boot_samples[[i]]
+    }
+
+    write.table(boot_matrix, boot_samples_file,
+        row.names = FALSE, col.names = TRUE, quote = FALSE, sep = "\t"
+    )
 
     # Now fit V(L) = A - B/L + sigma*L to the extracted V(L) values
     write_log("fit_static_potential: fitting V(L) = A - B/L + sigma*L")
@@ -300,22 +325,24 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 par[1] + par[2] / x + par[3] * x
             }
 
-            # Bootstrap fit using parametric.nlsfit
-            potential_fit <- parametric.nlsfit(
+            # Prepare bootstrap samples matrix
+            # Each column is V(L) for a specific L, each row is a bootstrap replica
+            n_boot <- length(v_of_L_data$boot_samples[[1]])
+            bsamples <- matrix(NA, nrow = n_boot, ncol = nrow(v_of_L_data))
+            for (i in 1:nrow(v_of_L_data)) {
+                bsamples[, i] <- v_of_L_data$boot_samples[[i]]
+            }
+
+            write_log(paste0("fit_static_potential: using ", n_boot, " bootstrap samples for ", nrow(v_of_L_data), " L values"))
+
+            # Bootstrap fit using bootstrap.nlsfit with pre-generated samples
+            potential_fit <- bootstrap.nlsfit(
                 fn = fn_potential,
                 par.guess = c(A_init, B_init, sigma_init),
-                boot.R = 200,
                 y = v_of_L_data$V,
-                dy = v_of_L_data$V_error,
-                x = v_of_L_data$L
+                x = v_of_L_data$L,
+                bsamples = bsamples
             )
-            # potential_fit <- bootstrap.nlsfit(
-            #    fn = fn_potential,
-            #    par.guess = c(A_init, B_init, sigma_init),
-            #    y = v_of_L_data$V,
-            #    dy = v_of_L_data$V_error,
-            #    x = v_of_L_data$L
-            # )
 
             # Extract parameters from bootstrap fit
             # potential_fit$t0 contains [A, B, sigma]
