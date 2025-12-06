@@ -215,8 +215,8 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 wloop <- cf_orig(cf = L_matrix)
                 wloop <- cf_meta(wloop, nrObs = 1, Time = Time_extent, symmetrise = FALSE)
 
-                boot.R <- 200
-                dbboot.R <- 100
+                boot.R <- 300
+                dbboot.R <- 200
                 wloop.boot <- bootstrap.cf(wloop, boot.R = boot.R, boot.l = 2)
                 wloop.boot <- double_bootstrap.cf(wloop.boot, dbboot.R = dbboot.R)
 
@@ -252,10 +252,22 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     ))
                 }
 
-                # Save fitted effective mass plot
+                # Calculate y-limits based on fit result with margin
+                V_fit <- wloop.efm.fit$effmassfit$t0[[1]]
+                V_fit_error <- wloop.efm.fit$effmassfit$se
+                y_margin <- 8 * V_fit_error # 3-sigma margin
+                ylim_linear <- c(V_fit - y_margin, V_fit + y_margin)
+
+                # Save fitted effective mass plot (linear scale)
                 efm_fit_plot_file <- file.path(plots_dir, sprintf("L_%d_effective_mass_fit.pdf", L_val))
                 pdf(efm_fit_plot_file, width = 8, height = 6)
                 plot(wloop.efm.fit, ylab = "V_eff", xlab = "t/a", xlim = c(1, Time_extent))
+                dev.off()
+
+                # Save fitted effective mass plot (log scale)
+                efm_fit_plot_log_file <- file.path(plots_dir, sprintf("L_%d_effective_mass_fit_log.pdf", L_val))
+                pdf(efm_fit_plot_log_file, width = 8, height = 6)
+                plot(wloop.efm.fit, ylab = "V_eff", xlab = "t/a", xlim = c(1, Time_extent), ylim = ylim_linear, log = "y")
                 dev.off()
 
                 # Save summary to text file
