@@ -75,7 +75,7 @@ find_best_plateau <- function(effmass_obj, min_window = 5, max_t2_frac = 0.8,
                         total_elements <- length(effmass_obj$effMass.tsboot[, t1:t2])
                         na_fraction <- na_count / total_elements
 
-                        score <- window_score - chi2_penalty - 0.5 * qval_penalty - 2 * error_penalty - 100 * na_fraction
+                        score <- window_score - 0.5 * chi2_penalty - 0.5 * qval_penalty - 2 * error_penalty - 1000 * na_fraction
 
                         results <- rbind(results, data.frame(
                             t1 = t1, t2 = t2, window = window_score,
