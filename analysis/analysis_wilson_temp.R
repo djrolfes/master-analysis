@@ -156,17 +156,29 @@ fit_static_potential <- function(directory, skip_steps = 0) {
         # Filter data for this L value
         data_L <- w_temp_data[w_temp_data$L == L_val, ]
 
-        # Reshape to matrix: rows = steps, columns = T values
-        data_wide <- pivot_wider(data_L,
-            id_cols = hmc_step,
-            names_from = T,
-            values_from = W_temp,
-            names_prefix = "T_"
-        )
+        # Use base R reshape for better performance with large datasets
+        # Create unique row identifier
+        data_L$row_id <- as.integer(factor(data_L$hmc_step))
+        data_L$col_id <- data_L$T
 
-        # Convert to matrix (exclude step column)
-        mat <- as.matrix(data_wide[, -1])
-        rownames(mat) <- data_wide$hmc_step
+        # Get unique steps and T values
+        unique_steps <- sort(unique(data_L$hmc_step))
+        unique_T_vals <- sort(unique(data_L$T))
+
+        # Create matrix
+        mat <- matrix(NA,
+            nrow = length(unique_steps),
+            ncol = length(unique_T_vals)
+        )
+        rownames(mat) <- as.character(unique_steps)
+        colnames(mat) <- paste0("T_", unique_T_vals)
+
+        # Fill matrix efficiently
+        for (i in 1:nrow(data_L)) {
+            step_idx <- match(data_L$hmc_step[i], unique_steps)
+            T_idx <- match(data_L$T[i], unique_T_vals)
+            mat[step_idx, T_idx] <- data_L$W_temp[i]
+        }
 
         return(mat)
     })
