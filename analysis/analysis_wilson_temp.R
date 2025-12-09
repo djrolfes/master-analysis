@@ -14,7 +14,7 @@ if (dir.exists(local_r_lib)) {
 library(hadron)
 library(dplyr)
 library(ggplot2)
-library(tidyr)
+library(data.table)
 source("data_io.R")
 
 # Simple logging helper
@@ -152,33 +152,24 @@ fit_static_potential <- function(directory, skip_steps = 0) {
     unique_T <- unique(w_temp_data$T)
     unique_steps <- unique(w_temp_data$hmc_step)
 
+    # Convert to data.table for much faster grouping operations on large datasets
+    dt <- as.data.table(w_temp_data)
+    setkey(dt, L, hmc_step, T)
+
     w_matrices <- lapply(unique_L, function(L_val) {
-        # Filter data for this L value
-        data_L <- w_temp_data[w_temp_data$L == L_val, ]
+        write_log(paste0("fit_static_potential: creating matrix for L = ", L_val))
 
-        # Use base R reshape for better performance with large datasets
-        # Create unique row identifier
-        data_L$row_id <- as.integer(factor(data_L$hmc_step))
-        data_L$col_id <- data_L$T
+        # Use data.table for very fast subsetting and reshaping
+        dt_L <- dt[L == L_val]
 
-        # Get unique steps and T values
-        unique_steps <- sort(unique(data_L$hmc_step))
-        unique_T_vals <- sort(unique(data_L$T))
+        # Fast dcast from data.table (much faster than pivot_wider or xtabs)
+        mat_wide <- dcast(dt_L, hmc_step ~ T, value.var = "W_temp", fill = NA)
 
-        # Create matrix
-        mat <- matrix(NA,
-            nrow = length(unique_steps),
-            ncol = length(unique_T_vals)
-        )
-        rownames(mat) <- as.character(unique_steps)
-        colnames(mat) <- paste0("T_", unique_T_vals)
-
-        # Fill matrix efficiently
-        for (i in 1:nrow(data_L)) {
-            step_idx <- match(data_L$hmc_step[i], unique_steps)
-            T_idx <- match(data_L$T[i], unique_T_vals)
-            mat[step_idx, T_idx] <- data_L$W_temp[i]
-        }
+        # Convert to matrix (first column is hmc_step, rest are T values)
+        steps <- mat_wide$hmc_step
+        mat <- as.matrix(mat_wide[, -1])
+        rownames(mat) <- as.character(steps)
+        colnames(mat) <- paste0("T_", colnames(mat))
 
         return(mat)
     })
