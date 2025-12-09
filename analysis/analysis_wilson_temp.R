@@ -241,8 +241,8 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 wloop <- cf_orig(cf = L_matrix)
                 wloop <- cf_meta(wloop, nrObs = 1, Time = Time_extent, symmetrise = FALSE)
 
-                boot.R <- 300
-                dbboot.R <- 200
+                boot.R <- 150
+                dbboot.R <- 50
                 wloop.boot <- bootstrap.cf(wloop, boot.R = boot.R, boot.l = 2)
                 wloop.boot <- double_bootstrap.cf(wloop.boot, dbboot.R = dbboot.R)
 
@@ -268,7 +268,7 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                     wloop.efm.fit <- find_best_plateau(wloop.efm,
                         min_window = 3, max_t2_frac = 0.7,
                         chi2_target = 1.0, chi2_tolerance = 0.9,
-                        min_qval = 0.1, max_qval = 0.9
+                        min_qval = 0.1, max_qval = 1
                     )
                     # Store detected plateau for override file generation
                     detected_plateaus <- rbind(detected_plateaus, data.frame(
@@ -530,12 +530,10 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 xlab = "Spatial Separation L (lattice units)",
                 ylab = "Potential V(L)",
                 main = sprintf(
-                    "Static Potential V(L) = A + B/L + sigma*L\nA=%.4f±%.4f, B=%.4f±%.4f, sigma=%.4f±%.4f\nr_0=%.4f±%.4f, a=%.4f±%.4f fm",
+                    "Static Potential V(L) = A + B/L + sigma*L\nA=%.4f±%.4f, B=%.4f±%.4f, sigma=%.4f±%.4f",
                     params["A"], param_errors["A"],
                     params["B"], param_errors["B"],
-                    params["sigma"], param_errors["sigma"],
-                    r_0, r_0_error,
-                    a_fm, a_fm_error
+                    params["sigma"], param_errors["sigma"]
                 ),
                 col.line = "black",
                 col.band = "black",

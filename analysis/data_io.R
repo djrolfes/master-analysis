@@ -106,6 +106,13 @@ read_data_W_temp_filename <- function(directory) {
   read_data_file(file.path(directory, filename))
 }
 
+# Function to read topological charge data
+read_data_topological_charge_filename <- function(directory) {
+  config <- read_yaml_config(directory)
+  filename <- config$GaugeObservableParams$topological_charge_filename
+  read_data_file(file.path(directory, filename))
+}
+
 # Function to read Wilson flow data (e.g., topological_charge_cumulative.txt)
 read_wilsonflow_data <- function(directory, filename) {
   filepath <- file.path(directory, filename)
