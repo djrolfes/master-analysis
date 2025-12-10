@@ -419,11 +419,41 @@ plotwitherror(L_values, V_values, V_errors,
               col = "red", pch = 19)
 ```
 
-**Plotting Best Practices**
+**Hadron Plotting Style Guidelines**
+
+The hadron package uses a consistent, professional plotting style suitable for publications:
+
+**Visual Design**:
+- **Frame**: Complete box around plot (`bty = "o"` or default, showing all four sides)
+- **Colors**: Black lines (`col.line = "black"`), gray error bands (`col.band = "gray"`)
+- **Transparency**: Error bands use `opacity.band = 0.65` (65% opacity)
+- **Line width**: `lwd = 2` for fit curves, standard for data
+- **Error bars**: Include end caps (perpendicular lines at bar endpoints)
+- **Point markers**: Standard filled circles (`pch = 19`) or as appropriate
+
+**Implementation**:
+```r
+# Base R plotting with hadron style
+par(bty = "o")  # Box type: complete frame around plot (default)
+plotwitherror(x, y, dy, 
+              xlab = "Variable [units]",
+              ylab = "Observable [units]",
+              pch = 19, col = "black")
+
+# Add fitted curve with error band
+pcol <- rgb(128/255, 128/255, 128/255, alpha = 0.65)
+polygon(c(x_fit, rev(x_fit)), 
+        c(y_fit + err_fit, rev(y_fit - err_fit)),
+        col = pcol, border = NA)
+lines(x_fit, y_fit, col = "black", lwd = 2)
+```
+
+**Best Practices**:
 - Use `pdf()` / `dev.off()` to save plots instead of screen display in scripts
 - Set reasonable `xlim` and `ylim` to show error bands clearly
 - Use `plot.range` to extend fits beyond data (e.g., to show scale settings)
 - Combine hadron plots with base R graphics (`abline`, `rect`, `text`, `legend`)
+- Keep frame visible (`bty = "o"`) for professional appearance
 - For publications: `lwd = 2`, semi-transparent error bands (`opacity.band = 0.3-0.5`)
 
 #### Bootstrap Parameter Guidelines

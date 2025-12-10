@@ -225,88 +225,6 @@ analyze_acceptance <- function(directory, data, skip_initial = 100) {
 
   eps <- 0.005 # Small shift to separate overlapping points
 
-  # Combined plot (both swap and per-defect)
-  p_combined <- ggplot() +
-    # Swap acceptance points and errors (shifted left slightly)
-    geom_point(data = plot_data, aes(x = Replica - eps, y = Mean_swap), size = 1.5, color = "red") +
-    geom_errorbar(data = plot_data, aes(x = Replica - eps, ymin = Mean_swap - Error_swap, ymax = Mean_swap + Error_swap), width = 0.03, color = "red") +
-
-    # Per-defect acceptance points and errors (shifted right slightly)
-    geom_point(data = plot_data_defects, aes(x = Defect + eps, y = Mean_defect), size = 1.5, color = "blue") +
-    geom_errorbar(data = plot_data_defects, aes(x = Defect + eps, ymin = Mean_defect - Error_defect, ymax = Mean_defect + Error_defect), width = 0.03, color = "blue") +
-
-    # Full-span shaded bands for weighted means
-    annotate("rect",
-      xmin = x_min, xmax = x_max,
-      ymin = swap_mean - swap_err, ymax = swap_mean + swap_err,
-      fill = "red", alpha = 0.1
-    ) +
-    annotate("rect",
-      xmin = x_min, xmax = x_max,
-      ymin = defect_mean - defect_err, ymax = defect_mean + defect_err,
-      fill = "blue", alpha = 0.1
-    ) +
-
-    # Horizontal lines for the weighted means
-    geom_hline(yintercept = swap_mean, linetype = "dashed", color = "red") +
-    geom_hline(yintercept = defect_mean, linetype = "dashed", color = "blue") +
-    labs(
-      title = "Acceptance Rates: Swap (red) vs Per-Defect (blue)",
-      x = "Replica / Defect",
-      y = "Acceptance Rate"
-    ) +
-    # Set x ticks at defects_full positions
-    scale_x_continuous(breaks = rep_sorted, labels = rep_sorted) +
-    theme_minimal() +
-    theme(
-      axis.ticks.x = element_line(color = "black"),
-      axis.text.x = element_text(color = "black")
-    )
-
-  # Swap-only plot
-  p_swap <- ggplot(plot_data, aes(x = Replica, y = Mean_swap)) +
-    geom_point(size = 1.5, color = "red") +
-    geom_errorbar(aes(ymin = Mean_swap - Error_swap, ymax = Mean_swap + Error_swap), width = 0.03, color = "red") +
-    annotate("rect",
-      xmin = x_min, xmax = x_max,
-      ymin = swap_mean - swap_err, ymax = swap_mean + swap_err,
-      fill = "red", alpha = 0.1
-    ) +
-    geom_hline(yintercept = swap_mean, linetype = "dashed", color = "red") +
-    labs(
-      title = "Swap Acceptance Rate per Replica",
-      x = "Replica / Defect",
-      y = "Acceptance Rate"
-    ) +
-    scale_x_continuous(breaks = rep_sorted, labels = rep_sorted) +
-    theme_minimal() +
-    theme(
-      axis.ticks.x = element_line(color = "black"),
-      axis.text.x = element_text(color = "black")
-    )
-
-  # Per-defect-only plot
-  p_defect <- ggplot(plot_data_defects, aes(x = Defect, y = Mean_defect)) +
-    geom_point(size = 1.5, color = "blue") +
-    geom_errorbar(aes(ymin = Mean_defect - Error_defect, ymax = Mean_defect + Error_defect), width = 0.03, color = "blue") +
-    annotate("rect",
-      xmin = x_min, xmax = x_max,
-      ymin = defect_mean - defect_err, ymax = defect_mean + defect_err,
-      fill = "blue", alpha = 0.1
-    ) +
-    geom_hline(yintercept = defect_mean, linetype = "dashed", color = "blue") +
-    labs(
-      title = "Per-Defect Acceptance Rate",
-      x = "Defect",
-      y = "Acceptance Rate"
-    ) +
-    scale_x_continuous(breaks = rep_sorted, labels = rep_sorted) +
-    theme_minimal() +
-    theme(
-      axis.ticks.x = element_line(color = "black"),
-      axis.text.x = element_text(color = "black")
-    )
-
   write_log(sprintf(
     "Weighted Mean Swap Acceptance Rate: %.3f ± %.3f",
     swap_mean, swap_err
@@ -316,13 +234,109 @@ analyze_acceptance <- function(directory, data, skip_initial = 100) {
     defect_mean, defect_err
   ))
 
-  ggsave(file.path(directory, "acceptance_by_replica.pdf"), plot = p_combined, width = 8, height = 6)
+  # Save plots with base R and hadron style
+
+  # Combined plot (both swap and per-defect)
+  pdf(file.path(directory, "acceptance_by_replica.pdf"), width = 8, height = 6)
+  par(bty = "o") # Complete frame
+  plot(rep_sorted, rep(0, length(rep_sorted)),
+    type = "n",
+    xlim = range(rep_sorted), ylim = range(c(
+      plot_data$Mean_swap - plot_data$Error_swap,
+      plot_data$Mean_swap + plot_data$Error_swap,
+      plot_data_defects$Mean_defect - plot_data_defects$Error_defect,
+      plot_data_defects$Mean_defect + plot_data_defects$Error_defect
+    )),
+    xlab = "Replica / Defect", ylab = "Acceptance Rate",
+    main = "Acceptance Rates: Swap (red) vs Per-Defect (blue)",
+    xaxt = "n"
+  )
+  axis(1, at = rep_sorted, labels = rep_sorted)
+
+  # Shaded bands for weighted means
+  rect(x_min, swap_mean - swap_err, x_max, swap_mean + swap_err,
+    col = rgb(1, 0, 0, alpha = 0.1), border = NA
+  )
+  rect(x_min, defect_mean - defect_err, x_max, defect_mean + defect_err,
+    col = rgb(0, 0, 1, alpha = 0.1), border = NA
+  )
+
+  # Horizontal lines for weighted means
+  abline(h = swap_mean, lty = 2, col = "red")
+  abline(h = defect_mean, lty = 2, col = "blue")
+
+  # Swap acceptance (shifted left)
+  hadron::plotwitherror(plot_data$Replica - eps, plot_data$Mean_swap, plot_data$Error_swap,
+    col = "red", pch = 19, cex = 0.8, rep = TRUE
+  )
+
+  # Per-defect acceptance (shifted right)
+  hadron::plotwitherror(plot_data_defects$Defect + eps, plot_data_defects$Mean_defect,
+    plot_data_defects$Error_defect,
+    col = "blue", pch = 19, cex = 0.8, rep = TRUE
+  )
+  dev.off()
   write_log("Combined acceptance plot saved to acceptance_by_replica.pdf")
 
-  ggsave(file.path(directory, "acceptance_swap_only.pdf"), plot = p_swap, width = 8, height = 6)
+  # Swap-only plot
+  pdf(file.path(directory, "acceptance_swap_only.pdf"), width = 8, height = 6)
+  par(bty = "o") # Complete frame
+  plot(rep_sorted, rep(0, length(rep_sorted)),
+    type = "n",
+    xlim = range(rep_sorted), ylim = range(c(
+      plot_data$Mean_swap - plot_data$Error_swap,
+      plot_data$Mean_swap + plot_data$Error_swap
+    )),
+    xlab = "Replica / Defect", ylab = "Acceptance Rate",
+    main = "Swap Acceptance Rate per Replica",
+    xaxt = "n"
+  )
+  axis(1, at = rep_sorted, labels = rep_sorted)
+
+  # Shaded band for weighted mean
+  rect(x_min, swap_mean - swap_err, x_max, swap_mean + swap_err,
+    col = rgb(1, 0, 0, alpha = 0.1), border = NA
+  )
+
+  # Horizontal line for weighted mean
+  abline(h = swap_mean, lty = 2, col = "red")
+
+  # Data points with errors
+  hadron::plotwitherror(plot_data$Replica, plot_data$Mean_swap, plot_data$Error_swap,
+    col = "red", pch = 19, cex = 0.8, rep = TRUE
+  )
+  dev.off()
   write_log("Swap acceptance plot saved to acceptance_swap_only.pdf")
 
-  ggsave(file.path(directory, "acceptance_per_defect_only.pdf"), plot = p_defect, width = 8, height = 6)
+  # Per-defect-only plot
+  pdf(file.path(directory, "acceptance_per_defect_only.pdf"), width = 8, height = 6)
+  par(bty = "o") # Complete frame
+  plot(rep_sorted, rep(0, length(rep_sorted)),
+    type = "n",
+    xlim = range(rep_sorted), ylim = range(c(
+      plot_data_defects$Mean_defect - plot_data_defects$Error_defect,
+      plot_data_defects$Mean_defect + plot_data_defects$Error_defect
+    )),
+    xlab = "Defect", ylab = "Acceptance Rate",
+    main = "Per-Defect Acceptance Rate",
+    xaxt = "n"
+  )
+  axis(1, at = rep_sorted, labels = rep_sorted)
+
+  # Shaded band for weighted mean
+  rect(x_min, defect_mean - defect_err, x_max, defect_mean + defect_err,
+    col = rgb(0, 0, 1, alpha = 0.1), border = NA
+  )
+
+  # Horizontal line for weighted mean
+  abline(h = defect_mean, lty = 2, col = "blue")
+
+  # Data points with errors
+  hadron::plotwitherror(plot_data_defects$Defect, plot_data_defects$Mean_defect,
+    plot_data_defects$Error_defect,
+    col = "blue", pch = 19, cex = 0.8, rep = TRUE
+  )
+  dev.off()
   write_log("Per-defect acceptance plot saved to acceptance_per_defect_only.pdf")
 
   # Create timeseries plots
@@ -352,7 +366,7 @@ create_acceptance_timeseries <- function(directory, swap_attempts_per_replica, m
 
   for (replica_idx in seq_along(swap_attempts_per_replica)) {
     write_log(sprintf("Processing replica %d/%d...", replica_idx, num_replicas))
-    
+
     accepts <- swap_attempts_per_replica[[replica_idx]]
     steps <- seq_along(accepts)
     write_log(sprintf("  Replica %d: %d data points", replica_idx, length(accepts)))

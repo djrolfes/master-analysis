@@ -95,29 +95,31 @@ analyze_wilsonflow_improv <- function(directory, filename = "action_densities_cl
 
   write_log(paste0("analyze_wilsonflow_improv: aggregated ", nrow(results), " factor entries"))
 
-  # Plot mean ± error vs factor
-  p <- ggplot(results, aes(x = as.numeric(factor), y = as.numeric(mean))) +
-    geom_point() +
-    geom_errorbar(aes(ymin = as.numeric(mean) - as.numeric(error), ymax = as.numeric(mean) + as.numeric(error)), width = 0.05) +
-    labs(
-      title = "Absolute difference (improved - normal) of action density",
-      x = "Improvement factor (multiplied to \u03b5) [dimensionless]",
-      y = "Mean |E_improved - E_normal| \u00b1 error [lattice units]"
-    ) +
-    theme_minimal()
-
+  # Plot mean ± error vs factor (base R with hadron style)
   out_pdf <- file.path(directory, "wilsonflow_improv_absdiff_bootstrap.pdf")
   write_log(paste0("analyze_wilsonflow_improv: saving plot to ", out_pdf))
   tryCatch(
     {
-      ggsave(out_pdf, plot = p, width = 7, height = 5)
-      write_log(paste0("analyze_wilsonflow_improv: saved ", out_pdf))
+      pdf(out_pdf, width = 6, height = 4)
+      par(bty = "o") # Complete frame
+      x_vals <- as.numeric(results$factor)
+      y_vals <- as.numeric(results$mean)
+      err_vals <- as.numeric(results$error)
+      hadron::plotwitherror(x_vals, y_vals, err_vals,
+        xlab = "Improvement factor (multiplied to \u03b5) [dimensionless]",
+        ylab = "Mean |E_improved - E_normal| \u00b1 error [lattice units]",
+        main = "Absolute difference (improved - normal) of action density",
+        pch = 19
+      )
+      dev.off()
+      write_log("analyze_wilsonflow_improv: plot saved")
     },
     error = function(e) {
       write_log(paste0("analyze_wilsonflow_improv: ERROR saving plot: ", conditionMessage(e)))
     }
   )
 
+  p <- recordPlot()
   return(list(data = results, plot = p))
 }
 

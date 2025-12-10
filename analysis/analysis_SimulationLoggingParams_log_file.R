@@ -65,17 +65,24 @@ analyze_deltaH_autocorr <- function(data, out_pdf_prefix, skip_steps = 0) {
     transmute(step = as.integer(as.numeric(.data[[step_col]])), delta_H = as.numeric(delta_H)) %>%
     filter(!is.na(step) & !is.na(delta_H))
 
-  # Timeseries plot
+  # Timeseries plot (base R with hadron style)
   ts_pdf <- paste0(out_pdf_prefix, "_delta_H_timeseries.pdf")
   write_log(paste0("analyze_deltaH_autocorr: saving timeseries to ", ts_pdf))
   tryCatch(
     {
-      p <- ggplot(ts_df, aes(x = step, y = delta_H)) +
-        geom_line(color = "darkgreen") +
-        geom_point(size = 0.7, alpha = 0.6) +
-        labs(title = "delta_H vs HMC step", x = "HMC Step", y = "ΔH [dimensionless]") +
-        theme_minimal()
-      ggsave(ts_pdf, plot = p, width = 8, height = 3)
+      pdf(ts_pdf, width = 8, height = 3)
+      par(bty = "o") # Complete frame around plot
+      plot(ts_df$step, ts_df$delta_H,
+        type = "l", col = "darkgreen", lwd = 1.5,
+        xlab = "HMC Step",
+        ylab = "ΔH [dimensionless]",
+        main = "delta_H vs HMC step"
+      )
+      points(ts_df$step, ts_df$delta_H,
+        pch = 19, cex = 0.5,
+        col = rgb(0, 100 / 255, 0, alpha = 0.6)
+      )
+      dev.off()
       write_log("analyze_deltaH_autocorr: timeseries saved")
     },
     error = function(e) {

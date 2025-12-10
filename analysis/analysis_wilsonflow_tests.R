@@ -29,11 +29,20 @@ bootstrap_analysis <- function(data, n_boot = 400) {
 
   write_log("bootstrap_analysis: completed aggregation")
   # Note: make.names() prepends "X" to numeric column names, so we need to remove it
-  ggplot(results, aes(x = as.numeric(gsub("^X", "", flow_time)), y = mean)) +
-    geom_line() +
-    geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
-    labs(title = "Bootstrap Analysis of Wilson Flow Observable", x = "Wilson Flow Time t", y = "Mean Observable") +
-    theme_minimal()
+  # Base R plot with hadron style
+  flow_times <- as.numeric(gsub("^X", "", results$flow_time))
+  par(bty = "o") # Complete frame
+  plot(flow_times, results$mean,
+    type = "n",
+    xlab = "Wilson Flow Time t", ylab = "Mean Observable",
+    main = "Bootstrap Analysis of Wilson Flow Observable"
+  )
+  # Error band
+  polygon(c(flow_times, rev(flow_times)),
+    c(results$mean + results$error, rev(results$mean - results$error)),
+    col = rgb(128 / 255, 128 / 255, 128 / 255, alpha = 0.65), border = NA
+  )
+  lines(flow_times, results$mean, col = "black", lwd = 2)
 }
 
 plot_heatmap <- function(data) {
@@ -72,15 +81,22 @@ compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 400) {
   write_log("compute_avg_dist_to_integer: completed aggregation")
   print(head(avg_dist))
   # Note: make.names() prepends "X" to numeric column names, so we need to remove it
-  avg_dist_plot <- ggplot(avg_dist, aes(x = as.numeric(gsub("^X", "", flow_time)), y = mean)) +
-    geom_line() +
-    geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
-    labs(
-      title = "Average Distance to Closest Integer (Topological Charge)",
-      x = "Wilson Flow Time t",
-      y = "Mean Distance ± Error [dimensionless]"
-    ) +
-    theme_minimal()
+  # Base R plot with hadron style
+  flow_times <- as.numeric(gsub("^X", "", avg_dist$flow_time))
+  par(bty = "o") # Complete frame
+  plot(flow_times, avg_dist$mean,
+    type = "n",
+    xlab = "Wilson Flow Time t",
+    ylab = "Mean Distance ± Error [dimensionless]",
+    main = "Average Distance to Closest Integer (Topological Charge)"
+  )
+  # Error band
+  polygon(c(flow_times, rev(flow_times)),
+    c(avg_dist$mean + avg_dist$error, rev(avg_dist$mean - avg_dist$error)),
+    col = rgb(128 / 255, 128 / 255, 128 / 255, alpha = 0.65), border = NA
+  )
+  lines(flow_times, avg_dist$mean, col = "black", lwd = 2)
+  avg_dist_plot <- recordPlot()
   write_log("compute_avg_dist_to_integer: plot created")
   return(list(data = avg_dist, plot = avg_dist_plot))
 }
@@ -336,33 +352,26 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
 
     # ===== CREATE PLOTS =====
 
-    # Plot 1: Action Density
-    action_density_plot <- ggplot(results, aes(x = flow_time_num, y = mean)) +
-      geom_line() +
-      geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
-      labs(
-        title = paste("Action Density <E(t)>:", name),
-        x = "Wilson Flow Time t",
-        y = "Mean Action Density E(t) ± Error"
-      ) +
-      theme_minimal()
+    # Plot 1: Action Density (base R with hadron style)
+    par(bty = "o") # Complete frame
+    plot(results$flow_time_num, results$mean,
+      type = "n",
+      xlab = "Wilson Flow Time t",
+      ylab = "Mean Action Density E(t) ± Error",
+      main = paste("Action Density <E(t)>:", name)
+    )
+    # Error band
+    polygon(c(results$flow_time_num, rev(results$flow_time_num)),
+      c(results$mean + results$error, rev(results$mean - results$error)),
+      col = rgb(128 / 255, 128 / 255, 128 / 255, alpha = 0.65), border = NA
+    )
+    lines(results$flow_time_num, results$mean, col = "black", lwd = 2)
+    action_density_plot <- recordPlot()
 
-    # Plot 2: t^2 * E(t) with target
+    # Plot 2: t^2 * E(t) with target (base R with hadron style)
     plot_title_ad_ft2 <- paste("t² × <E(t)>:", name)
-    ad_ft2_plot <- ggplot(boot_results, aes(x = flow_time_num, y = mean_ad_ft2)) +
-      geom_line(color = "darkred") +
-      geom_ribbon(aes(ymin = mean_ad_ft2 - error_ad_ft2, ymax = mean_ad_ft2 + error_ad_ft2), fill = "red", alpha = 0.2)
 
     if (!is.null(target_ad_ft2_info)) {
-      ad_ft2_plot <- ad_ft2_plot +
-        geom_hline(yintercept = target_ad_ft2, linetype = "dashed", color = "blue", linewidth = 0.8) +
-        geom_vline(xintercept = target_ad_ft2_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.8) +
-        annotate("point", x = target_ad_ft2_info$flow_time, y = target_ad_ft2, color = "blue", size = 2) +
-        annotate("errorbar",
-          y = target_ad_ft2, xmin = target_ad_ft2_info$flow_time - target_ad_ft2_info$error,
-          xmax = target_ad_ft2_info$flow_time + target_ad_ft2_info$error,
-          orientation = "y", color = "blue", width = target_ad_ft2 * 0.1, linewidth = 0.8
-        )
       plot_title_ad_ft2 <- paste0(plot_title_ad_ft2, sprintf(
         "\nt0(t^2*E=%.3f) = %.4f +/- %.4f",
         target_ad_ft2, target_ad_ft2_info$flow_time, target_ad_ft2_info$error
@@ -371,30 +380,39 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
       plot_title_ad_ft2 <- paste0(plot_title_ad_ft2, sprintf("\n(Target t^2*E=%.3f not reached)", target_ad_ft2))
     }
 
-    ad_ft2_plot <- ad_ft2_plot +
-      labs(
-        title = plot_title_ad_ft2,
-        x = "Wilson Flow Time t",
-        y = "t² <E(t)> ± Error"
-      ) +
-      theme_minimal()
+    par(bty = "o") # Complete frame
+    plot(boot_results$flow_time_num, boot_results$mean_ad_ft2,
+      type = "n",
+      xlab = "Wilson Flow Time t",
+      ylab = "t² <E(t)> ± Error",
+      main = plot_title_ad_ft2
+    )
+    # Error band in red
+    polygon(c(boot_results$flow_time_num, rev(boot_results$flow_time_num)),
+      c(
+        boot_results$mean_ad_ft2 + boot_results$error_ad_ft2,
+        rev(boot_results$mean_ad_ft2 - boot_results$error_ad_ft2)
+      ),
+      col = rgb(1, 0, 0, alpha = 0.2), border = NA
+    )
+    lines(boot_results$flow_time_num, boot_results$mean_ad_ft2, col = "darkred", lwd = 2)
 
-    # Plot 3: W(t) with target
+    if (!is.null(target_ad_ft2_info)) {
+      abline(h = target_ad_ft2, lty = 2, col = "blue", lwd = 0.8)
+      abline(v = target_ad_ft2_info$flow_time, lty = 2, col = "blue", lwd = 0.8)
+      points(target_ad_ft2_info$flow_time, target_ad_ft2, col = "blue", pch = 19, cex = 1.5)
+      # Horizontal error bar
+      arrows(target_ad_ft2_info$flow_time - target_ad_ft2_info$error, target_ad_ft2,
+        target_ad_ft2_info$flow_time + target_ad_ft2_info$error, target_ad_ft2,
+        angle = 90, code = 3, length = 0.05, col = "blue", lwd = 0.8
+      )
+    }
+    ad_ft2_plot <- recordPlot()
+
+    # Plot 3: W(t) with target (base R with hadron style)
     plot_title_w <- paste("W(t) = t × d/dt(t² <E(t)>):", name)
-    w_plot <- ggplot(w_results, aes(x = flow_time_num, y = mean_w)) +
-      geom_line(color = "darkgreen") +
-      geom_ribbon(aes(ymin = mean_w - error_w, ymax = mean_w + error_w), fill = "green", alpha = 0.2)
 
     if (!is.null(target_w_info)) {
-      w_plot <- w_plot +
-        geom_hline(yintercept = target_w, linetype = "dashed", color = "blue", linewidth = 0.8) +
-        geom_vline(xintercept = target_w_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.8) +
-        annotate("point", x = target_w_info$flow_time, y = target_w, color = "blue", size = 2) +
-        annotate("errorbar",
-          y = target_w, xmin = target_w_info$flow_time - target_w_info$error,
-          xmax = target_w_info$flow_time + target_w_info$error,
-          orientation = "y", color = "blue", width = target_w * 0.1, linewidth = 0.8
-        )
       plot_title_w <- paste0(plot_title_w, sprintf(
         "\nt0(W=%.3f) = %.4f +/- %.4f",
         target_w, target_w_info$flow_time, target_w_info$error
@@ -403,13 +421,34 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
       plot_title_w <- paste0(plot_title_w, sprintf("\n(Target W=%.3f not reached)", target_w))
     }
 
-    w_plot <- w_plot +
-      labs(
-        title = plot_title_w,
-        x = "Wilson Flow Time t",
-        y = "W(t) ± Error"
-      ) +
-      theme_minimal()
+    par(bty = "o") # Complete frame
+    plot(w_results$flow_time_num, w_results$mean_w,
+      type = "n",
+      xlab = "Wilson Flow Time t",
+      ylab = "W(t) ± Error",
+      main = plot_title_w
+    )
+    # Error band in green
+    polygon(c(w_results$flow_time_num, rev(w_results$flow_time_num)),
+      c(
+        w_results$mean_w + w_results$error_w,
+        rev(w_results$mean_w - w_results$error_w)
+      ),
+      col = rgb(0, 1, 0, alpha = 0.2), border = NA
+    )
+    lines(w_results$flow_time_num, w_results$mean_w, col = "darkgreen", lwd = 2)
+
+    if (!is.null(target_w_info)) {
+      abline(h = target_w, lty = 2, col = "blue", lwd = 0.8)
+      abline(v = target_w_info$flow_time, lty = 2, col = "blue", lwd = 0.8)
+      points(target_w_info$flow_time, target_w, col = "blue", pch = 19, cex = 1.5)
+      # Horizontal error bar
+      arrows(target_w_info$flow_time - target_w_info$error, target_w,
+        target_w_info$flow_time + target_w_info$error, target_w,
+        angle = 90, code = 3, length = 0.05, col = "blue", lwd = 0.8
+      )
+    }
+    w_plot <- recordPlot()
 
     # Plot 4: Overlay of t^2*E and W with intersection
     plot_title_overlay <- paste("Overlay: t² <E(t)> and W(t):", name)

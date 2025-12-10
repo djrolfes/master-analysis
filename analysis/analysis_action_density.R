@@ -109,23 +109,27 @@ analyze_action_density <- function(directory, skip_initial = 0) {
         write_log(paste0("analyze_action_density: after skipping ", skip_initial, " steps, ", nrow(data), " rows remain"))
     }
 
-    # 1) Plot action density vs HMC step
-    timeseries_plot <- ggplot(data, aes(x = step, y = action_density)) +
-        geom_line(color = "steelblue") +
-        geom_point(size = 0.8, alpha = 0.7) +
-        labs(
-            title = "Action Density vs HMC Step",
-            x = "HMC Step",
-            y = "Action Density E(t) [lattice units]"
-        ) +
-        theme_minimal()
-
+    # 1) Plot action density vs HMC step (base R with hadron style)
     out_ts_pdf <- file.path(directory, "action_density_timeseries.pdf")
     write_log(paste0("analyze_action_density: saving timeseries plot to ", out_ts_pdf))
+    timeseries_plot <- NULL
     tryCatch(
         {
-            ggsave(out_ts_pdf, plot = timeseries_plot, width = 8, height = 4)
-            write_log("analyze_action_density: timeseries plot saved")
+            pdf(out_ts_pdf, width = 8, height = 4)
+            par(bty = "o") # Complete frame around plot
+            plot(data$step, data$action_density,
+                type = "l", col = "steelblue", lwd = 1.5,
+                xlab = "HMC Step",
+                ylab = "Action Density E(t) [lattice units]",
+                main = "Action Density vs HMC Step"
+            )
+            points(data$step, data$action_density,
+                pch = 19, cex = 0.6,
+                col = rgb(70 / 255, 130 / 255, 180 / 255, alpha = 0.7)
+            )
+            timeseries_plot <- recordPlot()
+            dev.off()
+            write_log("analyze_action_density: timeseries saved")
         },
         error = function(e) {
             write_log(paste0("ERROR saving timeseries plot: ", conditionMessage(e)))

@@ -141,25 +141,29 @@ analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_s
 
   write_log(paste0("analyze_topological_charge: prepared data rows = ", nrow(data)))
 
-  # 1) Plot topological charge vs HMC step
-  timeseries_plot <- ggplot(data, aes(x = step, y = topo)) +
-    geom_line(color = "steelblue") +
-    geom_point(size = 0.8, alpha = 0.7) +
-    geom_vline(xintercept = skip_initial, linetype = "dashed", color = "red", linewidth = 0.8) +
-    annotate("text",
-      x = skip_initial, y = max(data$topo, na.rm = TRUE),
-      label = sprintf("skip=%d", skip_initial),
-      hjust = -0.1, vjust = 1, color = "red", size = 3.5
-    ) +
-    labs(title = "Topological Charge vs HMC Step", x = "HMC Step", y = "Topological Charge Q [dimensionless]") +
-    theme_minimal()
-
+  # 1) Plot topological charge vs HMC step (base R with hadron style)
   out_ts_pdf <- file.path(output_dir, paste0("topological_charge_timeseries", param_suffix, ".pdf"))
   write_log(paste0("analyze_topological_charge: saving timeseries plot to ", out_ts_pdf))
+  timeseries_plot <- NULL
   tryCatch(
     {
-      ggsave(out_ts_pdf, plot = timeseries_plot, width = 8, height = 4)
-      write_log("analyze_topological_charge: timeseries plot saved")
+      pdf(out_ts_pdf, width = 8, height = 4)
+      par(bty = "o") # Complete frame around plot
+      plot(data$step, data$topo,
+        type = "l", col = "steelblue", lwd = 1.5,
+        xlab = "HMC Step",
+        ylab = "Topological Charge Q [dimensionless]",
+        main = "Topological Charge vs HMC Step"
+      )
+      points(data$step, data$topo, pch = 19, cex = 0.6, col = rgb(70 / 255, 130 / 255, 180 / 255, alpha = 0.7))
+      abline(v = skip_initial, lty = 2, col = "red", lwd = 0.8)
+      text(skip_initial, max(data$topo, na.rm = TRUE),
+        labels = sprintf("skip=%d", skip_initial),
+        pos = 4, col = "red", cex = 0.9
+      )
+      timeseries_plot <- recordPlot()
+      dev.off()
+      write_log("analyze_topological_charge: timeseries saved")
     },
     error = function(e) {
       write_log(paste0("ERROR saving timeseries plot: ", conditionMessage(e)))
