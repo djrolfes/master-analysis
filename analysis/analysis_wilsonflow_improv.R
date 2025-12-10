@@ -101,8 +101,8 @@ analyze_wilsonflow_improv <- function(directory, filename = "action_densities_cl
     geom_errorbar(aes(ymin = as.numeric(mean) - as.numeric(error), ymax = as.numeric(mean) + as.numeric(error)), width = 0.05) +
     labs(
       title = "Absolute difference (improved - normal) of action density",
-      x = "Improvement factor (multiplied to eps)",
-      y = "Mean |improved - normal| ± error"
+      x = "Improvement factor (multiplied to \u03b5) [dimensionless]",
+      y = "Mean |E_improved - E_normal| \u00b1 error [lattice units]"
     ) +
     theme_minimal()
 

@@ -73,7 +73,7 @@ analyze_deltaH_autocorr <- function(data, out_pdf_prefix, skip_steps = 0) {
       p <- ggplot(ts_df, aes(x = step, y = delta_H)) +
         geom_line(color = "darkgreen") +
         geom_point(size = 0.7, alpha = 0.6) +
-        labs(title = "delta_H vs HMC step", x = "HMC step", y = "delta_H") +
+        labs(title = "delta_H vs HMC step", x = "HMC Step", y = "ΔH [dimensionless]") +
         theme_minimal()
       ggsave(ts_pdf, plot = p, width = 8, height = 3)
       write_log("analyze_deltaH_autocorr: timeseries saved")

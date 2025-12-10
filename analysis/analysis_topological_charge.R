@@ -151,7 +151,7 @@ analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_s
       label = sprintf("skip=%d", skip_initial),
       hjust = -0.1, vjust = 1, color = "red", size = 3.5
     ) +
-    labs(title = "Topological Charge vs HMC Step", x = "HMC Step", y = "Topological Charge") +
+    labs(title = "Topological Charge vs HMC Step", x = "HMC Step", y = "Topological Charge Q [dimensionless]") +
     theme_minimal()
 
   out_ts_pdf <- file.path(output_dir, paste0("topological_charge_timeseries", param_suffix, ".pdf"))

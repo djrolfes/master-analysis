@@ -116,7 +116,7 @@ analyze_action_density <- function(directory, skip_initial = 0) {
         labs(
             title = "Action Density vs HMC Step",
             x = "HMC Step",
-            y = "Action Density E(t)"
+            y = "Action Density E(t) [lattice units]"
         ) +
         theme_minimal()
 

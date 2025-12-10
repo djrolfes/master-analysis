@@ -32,7 +32,7 @@ bootstrap_analysis <- function(data, n_boot = 400) {
   ggplot(results, aes(x = as.numeric(gsub("^X", "", flow_time)), y = mean)) +
     geom_line() +
     geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
-    labs(title = "Bootstrap Analysis of Wilson Flow Observable", x = "Wilson Flow Time", y = "Mean Observable") +
+    labs(title = "Bootstrap Analysis of Wilson Flow Observable", x = "Wilson Flow Time t", y = "Mean Observable") +
     theme_minimal()
 }
 
@@ -77,8 +77,8 @@ compute_avg_dist_to_integer <- function(data, skip_steps = 0, n_boot = 400) {
     geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
     labs(
       title = "Average Distance to Closest Integer (Topological Charge)",
-      x = "Wilson Flow Time",
-      y = "Mean Distance ± Error"
+      x = "Wilson Flow Time t",
+      y = "Mean Distance ± Error [dimensionless]"
     ) +
     theme_minimal()
   write_log("compute_avg_dist_to_integer: plot created")
@@ -342,8 +342,8 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
       geom_ribbon(aes(ymin = mean - error, ymax = mean + error), alpha = 0.2) +
       labs(
         title = paste("Action Density <E(t)>:", name),
-        x = "Wilson Flow Time",
-        y = "Mean Action Density ± Error"
+        x = "Wilson Flow Time t",
+        y = "Mean Action Density E(t) ± Error"
       ) +
       theme_minimal()
 
@@ -374,8 +374,8 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
     ad_ft2_plot <- ad_ft2_plot +
       labs(
         title = plot_title_ad_ft2,
-        x = "Wilson Flow Time",
-        y = "t² × <E(t)> ± Error"
+        x = "Wilson Flow Time t",
+        y = "t² <E(t)> ± Error"
       ) +
       theme_minimal()
 
@@ -406,7 +406,7 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
     w_plot <- w_plot +
       labs(
         title = plot_title_w,
-        x = "Wilson Flow Time",
+        x = "Wilson Flow Time t",
         y = "W(t) ± Error"
       ) +
       theme_minimal()
@@ -442,12 +442,62 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
     overlay_plot <- overlay_plot +
       labs(
         title = plot_title_overlay,
-        x = "Wilson Flow Time",
-        y = "Value",
+        x = "Wilson Flow Time t",
+        y = "Observable Value",
         color = "Observable"
       ) +
       theme_minimal() +
       theme(legend.position = "bottom")
+
+    # Create clean action density plot without title, with t0 annotation
+    clean_ad_plot <- ggplot(boot_results, aes(x = flow_time_num, y = mean_ad_ft2)) +
+      geom_line(color = "darkred", linewidth = 1) +
+      geom_ribbon(aes(ymin = mean_ad_ft2 - error_ad_ft2, ymax = mean_ad_ft2 + error_ad_ft2), fill = "red", alpha = 0.2)
+
+    if (!is.null(target_ad_ft2_info)) {
+      # Calculate text position near bottom of plot
+      y_min <- min(boot_results$mean_ad_ft2 - boot_results$error_ad_ft2, na.rm = TRUE)
+      y_max <- max(boot_results$mean_ad_ft2 + boot_results$error_ad_ft2, na.rm = TRUE)
+      text_y_pos <- y_min + 0.05 * (y_max - y_min)
+
+      clean_ad_plot <- clean_ad_plot +
+        geom_hline(yintercept = target_ad_ft2, linetype = "dashed", color = "blue", linewidth = 0.4) +
+        geom_vline(xintercept = target_ad_ft2_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.4) +
+        annotate("errorbarh",
+          y = target_ad_ft2,
+          xmin = target_ad_ft2_info$flow_time - target_ad_ft2_info$error,
+          xmax = target_ad_ft2_info$flow_time + target_ad_ft2_info$error,
+          color = "blue", height = target_ad_ft2 * 0.05, linewidth = 0.6
+        ) +
+        annotate("point", x = target_ad_ft2_info$flow_time, y = target_ad_ft2, color = "blue", size = 1.5) +
+        annotate("text",
+          x = target_ad_ft2_info$flow_time + 0.1,
+          y = text_y_pos,
+          label = {
+            # Format as value(error) with proper significant digits
+            # Find the order of magnitude of the error
+            error_magnitude <- floor(log10(target_ad_ft2_info$error))
+            # Determine decimal places to show (2 significant digits in error)
+            decimal_places <- max(0, -error_magnitude)
+            # Round value and error to appropriate precision
+            value_rounded <- round(target_ad_ft2_info$flow_time, decimal_places)
+            error_rounded <- round(target_ad_ft2_info$error * 10^decimal_places)
+            sprintf("t0 = %.*f(%d)", decimal_places, value_rounded, as.integer(error_rounded))
+          },
+          color = "blue", size = 5, hjust = 0, vjust = 0
+        )
+    }
+
+    clean_ad_plot <- clean_ad_plot +
+      labs(
+        x = "Wilson Flow Time t",
+        y = "t² <E(t)>"
+      ) +
+      theme_minimal() +
+      theme(
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12)
+      )
 
     # Save all 4 plots to a single PDF
     out_pdf <- file.path(directory, paste0("combined_analysis_", sub("\\.txt$", "", name), ".pdf"))
@@ -464,6 +514,21 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
       },
       error = function(e) {
         write_log(paste0("analyze_combined_action_density: ERROR saving PDF for ", name, ": ", conditionMessage(e)))
+      }
+    )
+
+    # Save clean action density plot to separate single-page PDF
+    out_clean_pdf <- file.path(directory, paste0("action_density_clean_", sub("\\.txt$", "", name), ".pdf"))
+    write_log(paste0("analyze_combined_action_density: saving clean PDF to ", out_clean_pdf))
+    tryCatch(
+      {
+        pdf(out_clean_pdf, width = 8, height = 6)
+        print(clean_ad_plot)
+        dev.off()
+        write_log(paste0("analyze_combined_action_density: successfully saved ", out_clean_pdf))
+      },
+      error = function(e) {
+        write_log(paste0("analyze_combined_action_density: ERROR saving clean PDF for ", name, ": ", conditionMessage(e)))
       }
     )
 
@@ -613,8 +678,8 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200, ta
       # scale_y_log10() +
       labs(
         title = paste("Bootstrap Analysis of Action Density:", name),
-        x = "Wilson Flow Time",
-        y = "Mean Action Density ± Error (log scale)"
+        x = "Wilson Flow Time t",
+        y = "Mean Action Density E(t) ± Error [lattice units]"
       ) +
       theme_minimal()
 
@@ -648,8 +713,8 @@ analyze_action_density <- function(directory, skip_steps = 200, n_boot = 200, ta
     ad_ft2_plot <- ad_ft2_plot +
       labs(
         title = plot_title,
-        x = "Wilson Flow Time",
-        y = "Mean (Action Density × flow_time²) ± Error"
+        x = "Wilson Flow Time t",
+        y = "t² E(t) ± Error [lattice units]"
       ) +
       theme_minimal()
 
@@ -712,8 +777,8 @@ plot_topological_charge_samples <- function(data, directory, n_samples = 400, sk
     geom_line(alpha = 0.5) +
     labs(
       title = paste("Sample of", nrow(sampled_data), "Topological Charge Configurations"),
-      x = "Wilson Flow Time",
-      y = "Topological Charge"
+      x = "Wilson Flow Time t",
+      y = "Topological Charge Q [dimensionless]"
     ) +
     theme_minimal()
 
