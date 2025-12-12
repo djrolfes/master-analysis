@@ -310,7 +310,9 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
     # Look for all sign changes and keep the largest flow_time
     all_intersections <- list()
     for (i in 2:nrow(combined_data)) {
-      if (sign(combined_data$diff[i - 1]) != sign(combined_data$diff[i])) {
+      # Check for NA values before comparing signs
+      if (!is.na(combined_data$diff[i - 1]) && !is.na(combined_data$diff[i]) &&
+        sign(combined_data$diff[i - 1]) != sign(combined_data$diff[i])) {
         # Found a crossing
         t0 <- combined_data$flow_time_num[i - 1]
         t1 <- combined_data$flow_time_num[i]
@@ -866,7 +868,9 @@ analyze_wilsonflow <- function(directory, skip_steps = 200, target_ad_ft2 = 0.1,
       write_log(paste0("analyze_wilsonflow: saving avg dist plot to ", out_avg_file))
       tryCatch(
         {
-          ggsave(out_avg_file, plot = avg_dist_plot)
+          pdf(out_avg_file, width = 8, height = 6)
+          replayPlot(avg_dist_plot)
+          dev.off()
           write_log(paste0("analyze_wilsonflow: saved avg dist plot to ", out_avg_file))
         },
         error = function(e) {
