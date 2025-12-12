@@ -403,10 +403,12 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
       abline(h = target_ad_ft2, lty = 2, col = "blue", lwd = 0.8)
       abline(v = target_ad_ft2_info$flow_time, lty = 2, col = "blue", lwd = 0.8)
       points(target_ad_ft2_info$flow_time, target_ad_ft2, col = "blue", pch = 19, cex = 1.5)
-      # Horizontal error bar
+      # Horizontal error bar - make length proportional to y-axis range
+      y_range <- diff(range(boot_results$mean_ad_ft2, na.rm = TRUE))
+      arrow_length <- 0.02 * y_range
       arrows(target_ad_ft2_info$flow_time - target_ad_ft2_info$error, target_ad_ft2,
         target_ad_ft2_info$flow_time + target_ad_ft2_info$error, target_ad_ft2,
-        angle = 90, code = 3, length = 0.05, col = "blue", lwd = 0.8
+        angle = 90, code = 3, length = arrow_length, col = "blue", lwd = 0.8
       )
     }
     ad_ft2_plot <- recordPlot()
@@ -444,10 +446,12 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
       abline(h = target_w, lty = 2, col = "blue", lwd = 0.8)
       abline(v = target_w_info$flow_time, lty = 2, col = "blue", lwd = 0.8)
       points(target_w_info$flow_time, target_w, col = "blue", pch = 19, cex = 1.5)
-      # Horizontal error bar
+      # Horizontal error bar - make length proportional to y-axis range
+      y_range <- diff(range(w_results$mean_w, na.rm = TRUE))
+      arrow_length <- 0.02 * y_range
       arrows(target_w_info$flow_time - target_w_info$error, target_w,
         target_w_info$flow_time + target_w_info$error, target_w,
-        angle = 90, code = 3, length = 0.05, col = "blue", lwd = 0.8
+        angle = 90, code = 3, length = arrow_length, col = "blue", lwd = 0.8
       )
     }
     w_plot <- recordPlot()
@@ -501,6 +505,10 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
       y_max <- max(boot_results$mean_ad_ft2 + boot_results$error_ad_ft2, na.rm = TRUE)
       text_y_pos <- y_min + 0.05 * (y_max - y_min)
 
+      # Calculate error bar height proportional to plot range
+      y_range <- y_max - y_min
+      errorbar_height <- 0.02 * y_range
+
       clean_ad_plot <- clean_ad_plot +
         geom_hline(yintercept = target_ad_ft2, linetype = "dashed", color = "blue", linewidth = 0.4) +
         geom_vline(xintercept = target_ad_ft2_info$flow_time, linetype = "dashed", color = "blue", linewidth = 0.4) +
@@ -508,7 +516,7 @@ analyze_combined_action_density <- function(directory, skip_steps = 200, n_boot 
           y = target_ad_ft2,
           xmin = target_ad_ft2_info$flow_time - target_ad_ft2_info$error,
           xmax = target_ad_ft2_info$flow_time + target_ad_ft2_info$error,
-          color = "blue", height = target_ad_ft2 * 0.05, linewidth = 0.6
+          color = "blue", height = errorbar_height, linewidth = 0.6
         ) +
         annotate("point", x = target_ad_ft2_info$flow_time, y = target_ad_ft2, color = "blue", size = 1.5) +
         annotate("text",
