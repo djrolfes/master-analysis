@@ -42,7 +42,8 @@ safe_computeacf <- function(data, W.max, label = "data") {
   return(result)
 }
 
-analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_squared = 5.0, r = 1) {
+analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_squared = 5.0, r = 1,
+                                       xlim_min = NULL, xlim_max = 120000) {
   # Apply parameters to all analyses
   s_q <- s
   s_q_rounded <- s
@@ -169,6 +170,45 @@ analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_s
       write_log(paste0("ERROR saving timeseries plot: ", conditionMessage(e)))
     }
   )
+
+  # 1b) Plot topological charge vs PTBC-normalized steps (HMC step * n_replicas)
+  if (!is.na(n_replicas)) {
+    out_ts_ptbc_pdf <- file.path(output_dir, paste0("topological_charge_timeseries_ptbc", param_suffix, ".pdf"))
+    write_log(paste0("analyze_topological_charge: saving PTBC-normalized timeseries plot to ", out_ts_ptbc_pdf))
+
+    # Calculate PTBC-normalized steps
+    data_ptbc <- data
+    data_ptbc$step_ptbc <- data$step * n_replicas
+
+    # Determine x-axis limits (use provided values or defaults to data range)
+    xlim_min_ptbc <- if (is.null(xlim_min)) min(data_ptbc$step_ptbc, na.rm = TRUE) else xlim_min
+    xlim_max_ptbc <- if (is.null(xlim_max)) max(data_ptbc$step_ptbc, na.rm = TRUE) else xlim_max
+
+    tryCatch(
+      {
+        pdf(out_ts_ptbc_pdf, width = 8, height = 4)
+        par(bty = "o") # Complete frame around plot
+        plot(data_ptbc$step_ptbc, data_ptbc$topo,
+          type = "l", col = "steelblue", lwd = 1.5,
+          xlab = "PTBC Step (HMC Step × n_replicas)",
+          ylab = "Topological Charge Q",
+          xlim = c(xlim_min_ptbc, xlim_max_ptbc)
+        )
+        points(data_ptbc$step_ptbc, data_ptbc$topo, pch = 19, cex = 0.6, col = rgb(0, 0, 0, alpha = 0.7))
+        skip_ptbc <- skip_initial * n_replicas
+        abline(v = skip_ptbc, lty = 2, col = "red", lwd = 0.8)
+        text(skip_ptbc, max(data_ptbc$topo, na.rm = TRUE),
+          labels = sprintf("skip=%d", skip_ptbc),
+          pos = 4, col = "red", cex = 0.9
+        )
+        dev.off()
+        write_log("analyze_topological_charge: PTBC-normalized timeseries saved")
+      },
+      error = function(e) {
+        write_log(paste0("ERROR saving PTBC-normalized timeseries plot: ", conditionMessage(e)))
+      }
+    )
+  }
 
   # --- Bootstrap analysis of the topological charge (mean ± error) ---
   # Filter data first (bootstrap.analysis doesn't have a skip parameter)
@@ -641,13 +681,13 @@ analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_s
     }
   )
 
-  return(list(timeseries = timeseries_plot, autocorr = uw, tauint = tauint, dtauint = dtauint)) # nolint: line_length_linter.
+  return(list(timeseries = timeseries_plot, autocorr = uw, tauint = tauint, dtauint = dtauint))
 }
 
 # CLI entrypoint
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
-  stop("Usage: Rscript analysis_topological_charge.R <directory> [skip_initial] [s] [s_squared] [r]")
+  stop("Usage: Rscript analysis_topological_charge.R <directory> [skip_initial] [s] [s_squared] [r] [xlim_min] [xlim_max]")
 }
 
 directory <- args[1]
@@ -658,5 +698,10 @@ skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
 s <- if (length(args) >= 3) as.numeric(args[3]) else 2.5
 s_squared <- if (length(args) >= 4) as.numeric(args[4]) else 5.0
 r <- if (length(args) >= 5) as.integer(args[5]) else 1
-analyze_topological_charge(directory, skip_initial = skip_initial, s = s, s_squared = s_squared, r = r)
+xlim_min <- if (length(args) >= 6) as.numeric(args[6]) else NULL
+xlim_max <- if (length(args) >= 7) as.numeric(args[7]) else NULL
+analyze_topological_charge(directory,
+  skip_initial = skip_initial, s = s, s_squared = s_squared, r = r,
+  xlim_min = xlim_min, xlim_max = xlim_max
+)
 write_log("=== Analysis completed successfully ===")
