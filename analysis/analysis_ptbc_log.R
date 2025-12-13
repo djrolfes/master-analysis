@@ -526,8 +526,126 @@ weighted_mean_errors <- function(values, errors) {
   return(c(mean = weighted_mean, error = weighted_error))
 }
 
+# Function to plot defect evolution for each rank
+plot_defect_evolution <- function(directory, data, skip_initial = 0, xlim_min = NULL, xlim_max = NULL) {
+  write_log("Creating defect evolution plots for each rank...")
+
+  # Apply skip
+  original_nrow <- nrow(data)
+  if (skip_initial > 0) {
+    data <- data %>% filter(step > skip_initial)
+    write_log(sprintf(
+      "Skipped %d initial steps (skip_initial=%d), using %d remaining steps",
+      original_nrow - nrow(data), skip_initial, nrow(data)
+    ))
+  }
+
+  if (nrow(data) == 0) {
+    write_log("No data remaining after skip. Defect evolution plot aborted.")
+    return(NULL)
+  }
+
+  # Extract defect matrix: each row is a step, each column is a rank
+  num_steps <- nrow(data)
+  num_ranks <- length(data$defects[[1]])
+
+  write_log(sprintf("Processing %d steps with %d ranks", num_steps, num_ranks))
+
+  # Convert defects list to matrix
+  defect_matrix <- matrix(NA, nrow = num_steps, ncol = num_ranks)
+  for (i in seq_len(num_steps)) {
+    defect_matrix[i, ] <- unlist(data$defects[i])
+  }
+
+  steps <- data$step
+
+  # Determine x-axis limits
+  if (is.null(xlim_min)) {
+    xlim_min <- min(steps, na.rm = TRUE)
+  }
+  if (is.null(xlim_max)) {
+    # Default window: 5000 steps after skip_initial
+    xlim_max <- skip_initial + 5000
+  }
+
+  # Determine y-axis limits from data
+  ylim_min <- min(defect_matrix, na.rm = TRUE)
+  ylim_max <- max(defect_matrix, na.rm = TRUE)
+
+  write_log(sprintf("Plot x-axis limits: [%.0f, %.0f]", xlim_min, xlim_max))
+  write_log(sprintf("Plot y-axis limits: [%.3f, %.3f]", ylim_min, ylim_max))
+
+  # Prepare summary file
+  summary_file <- file.path(directory, "defect_evolution_summary.txt")
+  write_log(sprintf("Writing summary to %s", summary_file))
+
+  # Create a separate plot for each rank
+  for (rank in seq_len(num_ranks)) {
+    rank_idx <- rank - 1 # 0-indexed rank number
+    defect_values <- defect_matrix[, rank]
+
+    # Calculate statistics
+    mean_defect <- mean(defect_values, na.rm = TRUE)
+    sd_defect <- sd(defect_values, na.rm = TRUE)
+    min_defect <- min(defect_values, na.rm = TRUE)
+    max_defect <- max(defect_values, na.rm = TRUE)
+
+    write_log(sprintf(
+      "Rank %d: mean = %.3f, sd = %.3f, min = %.3f, max = %.3f",
+      rank_idx, mean_defect, sd_defect, min_defect, max_defect
+    ))
+
+    # Write to summary file
+    if (rank == 1) {
+      cat(sprintf("Defect Evolution Summary (skip_initial=%d)\n", skip_initial), file = summary_file)
+      cat(sprintf("X-axis limits: [%.0f, %.0f]\n", xlim_min, xlim_max), file = summary_file, append = TRUE)
+      cat(sprintf("Y-axis limits: [%.3f, %.3f]\n\n", ylim_min, ylim_max), file = summary_file, append = TRUE)
+    }
+    cat(sprintf("Rank %d:\n", rank_idx), file = summary_file, append = TRUE)
+    cat(sprintf("  Mean: %.6f\n", mean_defect), file = summary_file, append = TRUE)
+    cat(sprintf("  Std Dev: %.6f\n", sd_defect), file = summary_file, append = TRUE)
+    cat(sprintf("  Min: %.6f\n", min_defect), file = summary_file, append = TRUE)
+    cat(sprintf("  Max: %.6f\n\n", max_defect), file = summary_file, append = TRUE)
+
+    # Create individual plot
+    plot_file <- file.path(directory, sprintf("defect_evolution_rank%d.pdf", rank_idx))
+    pdf(plot_file, width = 10, height = 6)
+    par(bty = "o")
+
+    plot(steps, defect_values,
+      type = "l", col = "steelblue", lwd = 1.5,
+      xlab = "HMC Step",
+      ylab = "Defect Value",
+      xlim = c(xlim_min, xlim_max),
+      ylim = c(ylim_min, ylim_max)
+    )
+
+    # Add horizontal line at mean
+    abline(h = mean_defect, lty = 2, col = "darkred", lwd = 1)
+
+    # Add shaded band for ±1 standard deviation
+    rect(min(steps), mean_defect - sd_defect, max(steps), mean_defect + sd_defect,
+      col = rgb(1, 0, 0, alpha = 0.1), border = NA
+    )
+
+    # Add vertical line at skip_initial if applicable
+    if (skip_initial > 0 && skip_initial >= min(steps) && skip_initial <= max(steps)) {
+      abline(v = skip_initial, lty = 2, col = "red", lwd = 0.8)
+    }
+
+    # Add grid
+    grid(col = "gray80", lty = 1)
+
+    dev.off()
+    write_log(sprintf("Saved plot to %s", plot_file))
+  }
+
+  write_log(sprintf("Created %d individual defect evolution plots", num_ranks))
+  write_log(sprintf("Summary saved to %s", summary_file))
+}
+
 # Main analysis function for PTBC log
-analyze_ptbc_log <- function(directory, skip_initial = 0) {
+analyze_ptbc_log <- function(directory, skip_initial = 0, xlim_min = NULL, xlim_max = NULL) {
   write_log(paste("Starting PTBC log analysis for directory:", directory))
 
   # Read config and data
@@ -535,6 +653,10 @@ analyze_ptbc_log <- function(directory, skip_initial = 0) {
   ptbc_data <- read_ptbc_simulation_log(directory)
 
   number_defects <- length(ptbc_data$defects[[1]])
+
+  # Plot defect evolution for each rank
+  plot_defect_evolution(directory, ptbc_data, skip_initial, xlim_min, xlim_max)
+
   # Analyze acceptance (skip will be applied inside the function)
   acceptance_results <- analyze_acceptance(directory, ptbc_data, skip_initial)
 
@@ -549,7 +671,7 @@ analyze_ptbc_log <- function(directory, skip_initial = 0) {
 # CLI entrypoint
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1) {
-  stop("Usage: Rscript analysis_ptbc_log.R <directory> [skip_initial]")
+  stop("Usage: Rscript analysis_ptbc_log.R <directory> [skip_initial] [xlim_min] [xlim_max]")
 }
 
 directory <- args[1]
@@ -557,5 +679,7 @@ logs_dir <- file.path(directory, "logs")
 if (!dir.exists(logs_dir)) dir.create(logs_dir, recursive = TRUE)
 assign("WF_LOG_FILE", file.path(logs_dir, "analysis_ptbc_log.log"), envir = .GlobalEnv)
 skip_initial <- if (length(args) >= 2) as.integer(args[2]) else 0
-analyze_ptbc_log(directory, skip_initial = skip_initial)
+xlim_min <- if (length(args) >= 3) as.numeric(args[3]) else NULL
+xlim_max <- if (length(args) >= 4) as.numeric(args[4]) else NULL
+analyze_ptbc_log(directory, skip_initial = skip_initial, xlim_min = xlim_min, xlim_max = xlim_max)
 write_log("=== Analysis completed successfully ===")
