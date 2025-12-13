@@ -248,7 +248,6 @@ analyze_acceptance <- function(directory, data, skip_initial = 100) {
       plot_data_defects$Mean_defect + plot_data_defects$Error_defect
     )),
     xlab = "Replica / Defect", ylab = "Acceptance Rate",
-    main = "Acceptance Rates: Swap (red) vs Per-Defect (blue)",
     xaxt = "n"
   )
   axis(1, at = rep_sorted, labels = rep_sorted)
@@ -288,7 +287,6 @@ analyze_acceptance <- function(directory, data, skip_initial = 100) {
       plot_data$Mean_swap + plot_data$Error_swap
     )),
     xlab = "Replica / Defect", ylab = "Acceptance Rate",
-    main = "Swap Acceptance Rate per Replica",
     xaxt = "n"
   )
   axis(1, at = rep_sorted, labels = rep_sorted)
@@ -318,7 +316,6 @@ analyze_acceptance <- function(directory, data, skip_initial = 100) {
       plot_data_defects$Mean_defect + plot_data_defects$Error_defect
     )),
     xlab = "Defect", ylab = "Acceptance Rate",
-    main = "Per-Defect Acceptance Rate",
     xaxt = "n"
   )
   axis(1, at = rep_sorted, labels = rep_sorted)
