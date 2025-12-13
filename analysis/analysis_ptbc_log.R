@@ -564,8 +564,8 @@ plot_defect_evolution <- function(directory, data, skip_initial = 0, xlim_min = 
     xlim_min <- min(steps, na.rm = TRUE)
   }
   if (is.null(xlim_max)) {
-    # Default window: 5000 steps after skip_initial
-    xlim_max <- skip_initial + 5000
+    # Default window: 5000 steps after skip_initial, but cap at max available step
+    xlim_max <- min(skip_initial + 5000, max(steps, na.rm = TRUE))
   }
 
   # Determine y-axis limits from data
