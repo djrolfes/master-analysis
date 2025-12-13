@@ -152,10 +152,10 @@ analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_s
       plot(data$step, data$topo,
         type = "l", col = "steelblue", lwd = 1.5,
         xlab = "HMC Step",
-        ylab = "Topological Charge Q [dimensionless]",
-        main = "Topological Charge vs HMC Step"
+        ylab = "Topological Charge Q",
+        # main = "Topological Charge vs HMC Step"
       )
-      points(data$step, data$topo, pch = 19, cex = 0.6, col = rgb(70 / 255, 130 / 255, 180 / 255, alpha = 0.7))
+      points(data$step, data$topo, pch = 19, cex = 0.6, col = rgb(0, 0, 0, alpha = 0.7))
       abline(v = skip_initial, lty = 2, col = "red", lwd = 0.8)
       text(skip_initial, max(data$topo, na.rm = TRUE),
         labels = sprintf("skip=%d", skip_initial),
