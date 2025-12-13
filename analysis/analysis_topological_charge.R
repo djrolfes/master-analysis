@@ -158,7 +158,8 @@ analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_s
       )
       points(data$step, data$topo, pch = 19, cex = 0.6, col = rgb(0, 0, 0, alpha = 0.7))
       abline(v = skip_initial, lty = 2, col = "red", lwd = 0.8)
-      text(skip_initial, max(data$topo, na.rm = TRUE),
+      y_range <- max(data$topo, na.rm = TRUE) - min(data$topo, na.rm = TRUE)
+      text(skip_initial, max(data$topo, na.rm = TRUE) - 0.05 * y_range,
         labels = sprintf("skip=%d", skip_initial),
         pos = 4, col = "red", cex = 0.9
       )
@@ -197,7 +198,8 @@ analyze_topological_charge <- function(directory, skip_initial = 0, s = 2.5, s_s
         points(data_ptbc$step_ptbc, data_ptbc$topo, pch = 19, cex = 0.6, col = rgb(0, 0, 0, alpha = 0.7))
         skip_ptbc <- skip_initial * n_replicas
         abline(v = skip_ptbc, lty = 2, col = "red", lwd = 0.8)
-        text(skip_ptbc, max(data_ptbc$topo, na.rm = TRUE),
+        y_range <- max(data_ptbc$topo, na.rm = TRUE) - min(data_ptbc$topo, na.rm = TRUE)
+        text(skip_ptbc, max(data_ptbc$topo, na.rm = TRUE) - 0.05 * y_range,
           labels = sprintf("skip=%d", skip_ptbc),
           pos = 4, col = "red", cex = 0.9
         )
