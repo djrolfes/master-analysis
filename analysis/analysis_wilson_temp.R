@@ -14,7 +14,7 @@ if (dir.exists(local_r_lib)) {
 library(hadron)
 library(dplyr)
 library(ggplot2)
-library(data.table)
+library(tidyr)
 source("data_io.R")
 
 # Simple logging helper
@@ -152,24 +152,33 @@ fit_static_potential <- function(directory, skip_steps = 0) {
     unique_T <- unique(w_temp_data$T)
     unique_steps <- unique(w_temp_data$hmc_step)
 
-    # Convert to data.table for much faster grouping operations on large datasets
-    dt <- as.data.table(w_temp_data)
-    setkey(dt, L, hmc_step, T)
-
     w_matrices <- lapply(unique_L, function(L_val) {
-        write_log(paste0("fit_static_potential: creating matrix for L = ", L_val))
+        # Filter data for this L value
+        data_L <- w_temp_data[w_temp_data$L == L_val, ]
 
-        # Use data.table for very fast subsetting and reshaping
-        dt_L <- dt[L == L_val]
+        # Use base R reshape for better performance with large datasets
+        # Create unique row identifier
+        data_L$row_id <- as.integer(factor(data_L$hmc_step))
+        data_L$col_id <- data_L$T
 
-        # Fast dcast from data.table (much faster than pivot_wider or xtabs)
-        mat_wide <- dcast(dt_L, hmc_step ~ T, value.var = "W_temp", fill = NA)
+        # Get unique steps and T values
+        unique_steps <- sort(unique(data_L$hmc_step))
+        unique_T_vals <- sort(unique(data_L$T))
 
-        # Convert to matrix (first column is hmc_step, rest are T values)
-        steps <- mat_wide$hmc_step
-        mat <- as.matrix(mat_wide[, -1])
-        rownames(mat) <- as.character(steps)
-        colnames(mat) <- paste0("T_", colnames(mat))
+        # Create matrix
+        mat <- matrix(NA,
+            nrow = length(unique_steps),
+            ncol = length(unique_T_vals)
+        )
+        rownames(mat) <- as.character(unique_steps)
+        colnames(mat) <- paste0("T_", unique_T_vals)
+
+        # Fill matrix efficiently
+        for (i in 1:nrow(data_L)) {
+            step_idx <- match(data_L$hmc_step[i], unique_steps)
+            T_idx <- match(data_L$T[i], unique_T_vals)
+            mat[step_idx, T_idx] <- data_L$W_temp[i]
+        }
 
         return(mat)
     })
@@ -291,13 +300,13 @@ fit_static_potential <- function(directory, skip_steps = 0) {
                 # Save fitted effective mass plot (linear scale)
                 efm_fit_plot_file <- file.path(plots_dir, sprintf("L_%d_effective_mass_fit.pdf", L_val))
                 pdf(efm_fit_plot_file, width = 8, height = 6)
-                plot(wloop.efm.fit, ylab = "V_eff [lattice units]", xlab = "t/a [lattice units]", xlim = c(1, Time_extent))
+                plot(wloop.efm.fit, ylab = "V_eff", xlab = "t/a", xlim = c(1, Time_extent))
                 dev.off()
 
                 # Save fitted effective mass plot (log scale)
                 efm_fit_plot_log_file <- file.path(plots_dir, sprintf("L_%d_effective_mass_fit_log.pdf", L_val))
                 pdf(efm_fit_plot_log_file, width = 8, height = 6)
-                plot(wloop.efm.fit, ylab = "V_eff [lattice units]", xlab = "t/a [lattice units]", xlim = c(1, Time_extent), ylim = ylim_linear, log = "y")
+                plot(wloop.efm.fit, ylab = "V_eff", xlab = "t/a", xlim = c(1, Time_extent), ylim = ylim_linear, log = "y")
                 dev.off()
 
                 # Save summary to text file
@@ -445,16 +454,6 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
             write_log(paste0("fit_static_potential: using ", n_boot, " bootstrap samples for ", nrow(v_of_L_fit), " L values (", nrow(v_of_L_data), " total, ", nrow(v_of_L_skipped), " skipped)"))
 
-            # DIAGNOSTIC: Check individual V(L) errors
-            write_log("fit_static_potential: V(L) data with errors:")
-            for (i in 1:nrow(v_of_L_fit)) {
-                write_log(sprintf(
-                    "  L=%d: V=%.6f ± %.6f (relative error: %.2f%%)",
-                    v_of_L_fit$L[i], v_of_L_fit$V[i], v_of_L_fit$V_error[i],
-                    100 * v_of_L_fit$V_error[i] / v_of_L_fit$V[i]
-                ))
-            }
-
             # Bootstrap fit using bootstrap.nlsfit with pre-generated samples
             potential_fit <- bootstrap.nlsfit(
                 fn = fn_potential,
@@ -472,30 +471,12 @@ fit_static_potential <- function(directory, skip_steps = 0) {
             param_errors <- potential_fit$se
             names(param_errors) <- c("A", "B", "sigma")
 
-            # DIAGNOSTIC: Calculate residuals and check fit quality
-            V_fitted <- fn_potential(params, v_of_L_fit$L, 0)
-            residuals <- v_of_L_fit$V - V_fitted
-            standardized_residuals <- residuals / v_of_L_fit$V_error
-
-            write_log("fit_static_potential: Residual analysis:")
-            for (i in 1:length(residuals)) {
-                write_log(sprintf(
-                    "  L=%d: residual=%.6f, standardized=%.2f (%.1f sigma)",
-                    v_of_L_fit$L[i], residuals[i], standardized_residuals[i], abs(standardized_residuals[i])
-                ))
-            }
-            write_log(sprintf(
-                "  RMS of standardized residuals: %.3f (should be ~1 for good fit)",
-                sqrt(mean(standardized_residuals^2))
-            ))
-
             write_log(paste0("fit_static_potential: V(L) fit results:"))
             write_log(paste0("  A = ", round(params["A"], 6), " ± ", round(param_errors["A"], 6)))
             write_log(paste0("  B = ", round(params["B"], 6), " ± ", round(param_errors["B"], 6)))
             write_log(paste0("  sigma = ", round(params["sigma"], 6), " ± ", round(param_errors["sigma"], 6)))
             write_log(paste0("  chi2/dof = ", round(potential_fit$chisqr / potential_fit$dof, 3)))
             write_log(paste0("  Qval (p-value) = ", round(potential_fit$Qval, 4)))
-            write_log(paste0("  NOTE: hadron::bootstrap.nlsfit uses V_error from individual W(T) fits for chi2 calculation"))
 
             # Calculate r_0 (Sommer scale) and lattice spacing
             # r_0 = sqrt((1.65 + B) / sigma)
@@ -519,20 +500,13 @@ fit_static_potential <- function(directory, skip_steps = 0) {
             scale_file <- file.path(directory, "scale_setting_sommer.txt")
             write_log(paste0("fit_static_potential: writing scale setting to ", scale_file))
 
-            # Calculate RMS of standardized residuals for diagnostics
-            V_fitted_diag <- fn_potential(params, v_of_L_fit$L, 0)
-            residuals_diag <- v_of_L_fit$V - V_fitted_diag
-            standardized_residuals_diag <- residuals_diag / v_of_L_fit$V_error
-            rms_standardized <- sqrt(mean(standardized_residuals_diag^2))
-
             scale_content <- sprintf(
-                "# Static Potential Fit Results (Sommer Scale Setting)\n# V(L) = A + B/L + sigma*L\n\n# Fit Parameters:\nA = %.6f ± %.6f\nB = %.6f ± %.6f\nsigma = %.6f ± %.6f\n\n# Fit Quality:\nchi2/dof = %.3f\nQval (p-value) = %.4f\nRMS(standardized residuals) = %.3f\n\n# NOTE: High chi2/dof indicates V_error from W(T) fits may be underestimated.\n# V_error values are bootstrap errors from constant fits to W(L,T) vs T.\n# These capture statistical fluctuations but may not include:\n#   - Systematic uncertainties in plateau selection\n#   - Correlations between different L values (same configurations)\n#   - Model dependence of the effective mass fits\n# The V(L) model fit is reasonable; consider scaling errors by sqrt(chi2/dof)\n# if using results for physics analysis.\n\n# Scale Setting:\nr_0 = %.6f ± %.6f (lattice units)\nlattice_spacing_a = %.6f ± %.6f fm\n",
+                "# Static Potential Fit Results (Sommer Scale Setting)\n# V(L) = A + B/L + sigma*L\n\n# Fit Parameters:\nA = %.6f ± %.6f\nB = %.6f ± %.6f\nsigma = %.6f ± %.6f\n\n# Fit Quality:\nchi2/dof = %.3f\nQval (p-value) = %.4f\n\n# Scale Setting:\nr_0 = %.6f ± %.6f (lattice units)\nlattice_spacing_a = %.6f ± %.6f fm\n",
                 params["A"], param_errors["A"],
                 params["B"], param_errors["B"],
                 params["sigma"], param_errors["sigma"],
                 potential_fit$chisqr / potential_fit$dof,
                 potential_fit$Qval,
-                rms_standardized,
                 r_0, r_0_error,
                 a_fm, a_fm_error
             )
@@ -565,8 +539,8 @@ fit_static_potential <- function(directory, skip_steps = 0) {
 
             # Create the plot
             plot(potential_fit,
-                xlab = "Spatial Separation L [lattice units]",
-                ylab = "Potential V(L) [lattice units]",
+                xlab = "Spatial Separation L (lattice units)",
+                ylab = "Potential V(L)",
                 main = sprintf(
                     "Static Potential V(L) = A + B/L + sigma*L\nA=%.4f±%.4f, B=%.4f±%.4f, sigma=%.4f±%.4f",
                     params["A"], param_errors["A"],
